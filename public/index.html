@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" href="data:," />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Photo Ranker — MVP</title>
+    <link rel="stylesheet" href="./styles/base.css" />
+    <link rel="stylesheet" href="./styles/components.css" />
+  </head>
+  <body>
+    <header class="app-header">
+      <h1>Photo Ranker</h1>
+      <nav class="tabs" role="tablist" aria-label="Navegação principal">
+        <a href="#/upload" role="tab" aria-selected="true">Upload</a>
+        <a href="#/rate" role="tab" aria-selected="false">Avaliar</a>
+        <a href="#/contest" role="tab" aria-selected="false">Contest</a>
+        <a href="#/results" role="tab" aria-selected="false">Resultados</a>
+      </nav>
+    </header>
+
+    <main id="app" class="app-main">
+      <!-- UPLOAD -->
+      <section
+        data-route="upload"
+        class="route active"
+        aria-labelledby="upload-title"
+      >
+        <h2 id="upload-title" class="sr-only">Upload e Organização</h2>
+
+        <div class="panel">
+          <div
+            class="dropzone"
+            id="dropzone"
+            tabindex="0"
+            aria-label="Área para soltar imagens"
+          >
+            <p>Arraste e solte imagens aqui</p>
+            <p class="muted">ou</p>
+            <label class="btn">
+              Escolher imagens
+              <input
+                id="fileInput"
+                type="file"
+                accept="image/*"
+                multiple
+                hidden
+              />
+            </label>
+          </div>
+
+          <div class="toolbar">
+            <div class="toolbar-left">
+              <button
+                id="selectModeBtn"
+                class="btn btn-secondary"
+                aria-pressed="false"
+                aria-label="Ativar seleção múltipla"
+              >
+                Selecionar
+              </button>
+              <button id="clearAll" class="btn btn-secondary" disabled>
+                Limpar
+              </button>
+            </div>
+            <div class="toolbar-right">
+              <span id="countInfo" class="muted">0 imagens</span>
+            </div>
+          </div>
+
+          <div id="grid" class="grid grid-photos" aria-live="polite"></div>
+        </div>
+      </section>
+
+      <!-- RATE -->
+      <section data-route="rate" class="route" aria-labelledby="rate-title">
+        <h2 id="rate-title" class="sr-only">Avaliar fotos</h2>
+        <div class="center">
+          <p class="muted">
+            Em breve: fluxo de estrelas 1–5 com atalhos 1..5 e progresso.
+          </p>
+        </div>
+      </section>
+
+      <!-- CONTEST -->
+      <section
+        data-route="contest"
+        class="route"
+        aria-labelledby="contest-title"
+      >
+        <h2 id="contest-title" class="sr-only">Contest</h2>
+        <div class="center">
+          <p class="muted">Em breve: duelos lado a lado (A × B) e torneio.</p>
+        </div>
+      </section>
+
+      <!-- RESULTS -->
+      <section
+        data-route="results"
+        class="route"
+        aria-labelledby="results-title"
+      >
+        <h2 id="results-title" class="sr-only">Resultados</h2>
+        <div class="center">
+          <p class="muted">Em breve: campeã, ranking e exportações.</p>
+        </div>
+      </section>
+    </main>
+
+    <!-- Progress overlay -->
+    <div id="progress" class="progress" aria-live="polite" aria-hidden="true">
+      <div class="progress-text" id="progressText">Processando…</div>
+      <div class="progress-bar"><div id="progressBar"></div></div>
+    </div>
+
+    <!-- Viewer fullscreen -->
+    <div
+      id="viewer"
+      class="viewer"
+      aria-hidden="true"
+      role="dialog"
+      aria-modal="true"
+    >
+      <button class="viewer-close" aria-label="Fechar (Esc)">&times;</button>
+      <button class="viewer-prev" aria-label="Anterior">&#10094;</button>
+      <img id="viewerImg" alt="Visualização da foto" />
+      <button class="viewer-next" aria-label="Próxima">&#10095;</button>
+      <button class="viewer-delete" aria-label="Remover esta imagem">
+        &#128465;
+      </button>
+    </div>
+
+    <div id="multiBar" class="multi-bar" aria-hidden="true">
+      <span id="multiCount">0 selecionadas</span>
+      <button id="multiRemove" class="btn">Remover selecionadas</button>
+      <button id="multiClear" class="btn secondary">Cancelar</button>
+    </div>
+
+    <div
+      id="confirmModal"
+      class="modal"
+      aria-hidden="true"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="confirmTitle"
+      aria-describedby="confirmMsg"
+    >
+      <div class="dialog">
+        <h3 id="confirmTitle">Confirmar ação</h3>
+        <p id="confirmMsg">Tem certeza?</p>
+        <div class="actions">
+          <button id="confirmCancel" class="btn btn-secondary">
+            Cancelar (Esc)
+          </button>
+          <button id="confirmOk" class="btn btn-danger">Remover</button>
+        </div>
+      </div>
+    </div>
+
+    <footer class="app-footer">
+      <small>Mobile-first • Offline-ready (em breve PWA) • A11Y</small>
+    </footer>
+
+    <script type="module" src="./scripts/app.js"></script>
+  </body>
+</html>

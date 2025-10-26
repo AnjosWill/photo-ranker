@@ -1,0 +1,311 @@
+/* Toast */
+.toast {
+  position: fixed;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #111;
+  color: #fff;
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1px solid #333;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+  z-index: 100;
+}
+
+/* Foco visível nos cards */
+.photo-card {
+  outline: none;
+}
+.photo-card:focus-visible {
+  box-shadow: 0 0 0 3px rgba(106, 163, 255, 0.8);
+}
+
+/* Progress */
+.progress {
+  position: fixed;
+  inset: auto 16px 16px 16px;
+  background: rgba(20, 20, 22, 0.95);
+  color: #fff;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid #333;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  display: none;
+  gap: 8px;
+  z-index: 120;
+}
+.progress[aria-hidden="false"] {
+  display: grid;
+}
+.progress-text {
+  font-size: 14px;
+  margin-bottom: 4px;
+}
+.progress-bar {
+  width: 100%;
+  height: 8px;
+  background: #222;
+  border-radius: 999px;
+  overflow: hidden;
+}
+#progressBar {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(135deg, var(--brand), var(--brand-2));
+}
+
+/* Viewer (fullscreen) */
+.viewer {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.85);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 130;
+}
+.viewer[aria-hidden="false"] {
+  display: flex;
+}
+#viewerImg {
+  max-width: 96vw;
+  max-height: 90vh;
+  border-radius: 10px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
+}
+.viewer-close,
+.viewer-prev,
+.viewer-next {
+  position: absolute;
+  background: rgba(0, 0, 0, 0.5);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  width: 44px;
+  height: 44px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+.viewer-close {
+  top: 20px;
+  right: 20px;
+  font-size: 24px;
+}
+.viewer-prev {
+  left: 16px;
+}
+.viewer-next {
+  right: 16px;
+}
+
+/* Botão remover no viewer */
+.viewer-delete {
+  position: absolute;
+  bottom: 20px;
+  right: 20px;
+  width: 44px;
+  height: 44px;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  transition: transform 0.12s ease, background 0.15s ease, opacity 0.15s ease;
+}
+.viewer-delete:hover {
+  transform: scale(1.06);
+}
+.viewer-delete:active {
+  transform: scale(0.96);
+}
+
+/* Microinterações remover (cards) */
+.icon-btn {
+  transition: transform 0.12s ease, opacity 0.15s ease;
+}
+.icon-btn:hover {
+  transform: scale(1.06);
+}
+.icon-btn:active {
+  transform: scale(0.96);
+}
+.photo-card.removing {
+  opacity: 0.5;
+  pointer-events: none;
+}
+.icon-btn .spinner {
+  width: 18px;
+  height: 18px;
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Multi-select bar */
+.multi-bar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: rgba(24, 24, 28, 0.96);
+  color: #fff;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 16px;
+  border-top: 1px solid #333;
+  transform: translateY(100%);
+  transition: transform 0.25s ease;
+  z-index: 140;
+  gap: 8px;
+}
+.multi-bar[aria-hidden="false"] {
+  transform: translateY(0);
+}
+
+/* Modal de confirmação */
+.modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 150;
+}
+.modal[aria-hidden="false"] {
+  display: flex;
+}
+.modal .dialog {
+  width: min(92vw, 420px);
+  background: var(--bg-elev);
+  color: var(--fg);
+  border: 1px solid #333;
+  border-radius: 16px;
+  padding: 18px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.45);
+}
+.modal h3 {
+  margin: 0 0 8px;
+}
+.modal p {
+  margin: 0 0 16px;
+  color: var(--muted);
+}
+.modal .actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+/* Botões gerais */
+.btn {
+  appearance: none;
+  border: none;
+  border-radius: 8px;
+  padding: 8px 16px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s ease, transform 0.1s ease;
+}
+.btn:not(.btn-secondary):not(.btn-danger) {
+  background: var(--brand, #6aa3ff);
+  color: #fff;
+}
+.btn:not(.btn-secondary):not(.btn-danger):hover {
+  background: color-mix(in srgb, var(--brand, #6aa3ff) 80%, black);
+}
+.btn:not(.btn-secondary):not(.btn-danger):active {
+  transform: scale(0.97);
+}
+.btn-secondary {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--fg-muted, #bbb);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+}
+.btn-secondary:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+.btn-secondary:active {
+  transform: scale(0.97);
+}
+.btn-danger {
+  background: #b43232;
+  color: #fff;
+}
+.btn-danger:hover {
+  background: #d04444;
+}
+.btn-danger:active {
+  transform: scale(0.97);
+}
+.btn[disabled],
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+/* Botão toggle ativo (Selecionar) */
+.btn[aria-pressed="true"] {
+  background: rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  color: #fff;
+}
+
+/* ===============================
+   Modo Normal vs. Modo Seleção
+   =============================== */
+
+/* Checador de seleção (elemento) – escondido por padrão */
+.photo-card .select-mark {
+  display: none;
+}
+
+/* No modo seleção: mostra check e esconde botões ✕ */
+.selection-mode .photo-actions {
+  display: none !important;
+}
+.selection-mode .photo-card .select-mark {
+  display: grid !important;
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.8);
+  background: rgba(0, 0, 0, 0.35);
+  place-items: center;
+  font-size: 14px;
+  color: #fff;
+}
+/* Destaque do card selecionado – só no modo seleção */
+.selection-mode .photo-card.selected {
+  outline: 3px solid var(--brand, #6aa3ff);
+  outline-offset: -3px;
+}
+.selection-mode .photo-card.selected .select-mark {
+  background: var(--brand, #6aa3ff);
+  border-color: transparent;
+  color: #fff;
+}
+
+/* Bloqueio de navegação no viewer com modal aberto */
+.confirm-open .viewer-prev,
+.confirm-open .viewer-next {
+  opacity: 0.35;
+  pointer-events: none;
+}
