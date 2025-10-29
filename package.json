@@ -1,0 +1,10 @@
+{
+    "name": "photo-ranker",
+    "private": true,
+    "scripts": {
+      "dev": "http-server public -p 5500 -c-1"
+    },
+    "devDependencies": {
+      "http-server": "^14.1.1"
+    }
+  }

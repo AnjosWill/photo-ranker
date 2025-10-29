@@ -1,0 +1,47 @@
+# Dependências
+node_modules/
+
+# Arquivos do sistema operacional
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDEs e editores
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.settings/
+.classpath
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Temporários
+*.tmp
+*.temp
+.cache/
+
+# Build (se houver)
+dist/
+build/
+.parcel-cache/
+
+# Testes (se quiser manter locais)
+coverage/
+.nyc_output/
+
+# Environment
+.env
+.env.local
+.env.*.local
+

@@ -1,6 +1,7 @@
 import { $, on } from "./ui.js";
 import { savePhotos, getAllPhotos, clearAll } from "./db.js";
 import { filesToThumbs } from "./image-utils.js";
+import { openCropper } from "./cropper.js";
 
 const MAX_SIZE_MB = 15;
 const MAX_FILES_PER_BATCH = 300;
@@ -246,15 +247,321 @@ async function handleFiles(fileList) {
       );
     }
 
-    await savePhotos(newPhotos);
-    renderGrid(await getAllPhotos());
-    toast(`${newPhotos.length} imagem(ns) adicionadas.`);
+    // Sprint 2: Análise de imagens 2×2 via worker
+    updateProgress("Analisando imagens para detecção 2×2...", 90);
+    const { normalPhotos, quadCandidates } = await analyzePhotosForQuad(newPhotos);
+    
+    // Salvar fotos normais imediatamente
+    if (normalPhotos.length > 0) {
+      await savePhotos(normalPhotos);
+    }
+    
+    showProgress(false);
+    
+    // Processar candidatas 2×2 sequencialmente
+    if (quadCandidates.length > 0) {
+      const splitResults = await processCropQueue(quadCandidates);
+      renderGrid(await getAllPhotos());
+      
+      const totalAdded = normalPhotos.length + splitResults.totalQuadrants;
+      toast(`${totalAdded} imagem(ns) adicionadas (${splitResults.splitCount} divididas em 2×2).`);
+    } else {
+      renderGrid(await getAllPhotos());
+      toast(`${newPhotos.length} imagem(ns) adicionadas.`);
+    }
   } catch (err) {
     console.error(err);
     toast("Erro ao processar imagens. Veja o Console para detalhes.");
   } finally {
     showProgress(false);
   }
+}
+
+/**
+ * Analisa fotos via worker para detectar padrão 2×2
+ */
+async function analyzePhotosForQuad(photos) {
+  const normalPhotos = [];
+  const quadCandidates = [];
+  
+  // Criar workers para análise paralela
+  const analyses = photos.map(photo => analyzePhoto(photo));
+  const results = await Promise.all(analyses);
+  
+  results.forEach(({ photo, isQuad, analysis }) => {
+    if (isQuad) {
+      quadCandidates.push({ photo, analysis });
+    } else {
+      normalPhotos.push(photo);
+    }
+  });
+  
+  return { normalPhotos, quadCandidates };
+}
+
+/**
+ * Analisa uma foto individual via worker
+ */
+function analyzePhoto(photo) {
+  return new Promise((resolve) => {
+    let workerResolved = false;
+    
+    try {
+      const worker = new Worker('./scripts/quad-worker.js');
+      const img = new Image();
+      
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.width;
+        canvas.height = img.height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0);
+        const imageData = ctx.getImageData(0, 0, img.width, img.height);
+        
+        worker.postMessage({
+          imageData: imageData.data,
+          id: photo.id,
+          width: img.width,
+          height: img.height
+        });
+        
+        worker.onmessage = (e) => {
+          if (workerResolved) return;
+          workerResolved = true;
+          worker.terminate();
+          resolve({
+            photo,
+            isQuad: e.data.isQuad,
+            analysis: e.data
+          });
+        };
+        
+        worker.onerror = (err) => {
+          if (workerResolved) return;
+          workerResolved = true;
+          console.error(`Erro no worker de análise:`, err);
+          worker.terminate();
+          resolve({ photo, isQuad: false, analysis: null });
+        };
+        
+        // Timeout de segurança (500ms)
+        setTimeout(() => {
+          if (workerResolved) return;
+          workerResolved = true;
+          worker.terminate();
+          resolve({ photo, isQuad: false, analysis: null });
+        }, 500);
+      };
+      
+      img.onerror = () => {
+        resolve({ photo, isQuad: false, analysis: null });
+      };
+      
+      img.src = photo.thumb;
+      
+    } catch (error) {
+      console.error(`Erro ao criar worker de análise:`, error);
+      resolve({ photo, isQuad: false, analysis: null });
+    }
+  });
+}
+
+/**
+ * Restaura foto original removendo todas as fotos cortadas
+ * @param {Object} croppedPhoto - Uma das fotos cortadas (com _parentId)
+ */
+async function handleRevert(croppedPhoto) {
+  if (!croppedPhoto._parentId) return;
+  
+  try {
+    const allPhotos = await getAllPhotos();
+    const parentId = croppedPhoto._parentId;
+    
+    // Encontrar foto original
+    const originalPhoto = allPhotos.find(p => p.id === parentId);
+    if (!originalPhoto) {
+      toast('Erro: Foto original não encontrada.');
+      return;
+    }
+    
+    // Encontrar todas as fotos irmãs (com mesmo _parentId)
+    const siblings = allPhotos.filter(p => p._parentId === parentId);
+    
+    // Confirmar ação com o usuário
+    return new Promise((resolve) => {
+      openConfirm({
+        title: 'Restaurar foto original?',
+        message: `Isso irá remover as ${siblings.length} fotos cortadas e restaurar a imagem original.`,
+        confirmText: 'Restaurar',
+        onConfirm: async () => {
+          try {
+            // Remover todas as fotos cortadas
+            const photosToDelete = siblings.map(p => ({ ...p, _delete: true }));
+            
+            // Restaurar original (remover flag _isSplit)
+            const restoredOriginal = { ...originalPhoto, _isSplit: false };
+            
+            // Salvar alterações
+            await savePhotos([...photosToDelete, restoredOriginal]);
+            
+            // Re-renderizar grid
+            const updatedPhotos = await getAllPhotos();
+            renderGrid(updatedPhotos);
+            
+            toast(`Foto original restaurada. ${siblings.length} cortes removidos.`);
+            resolve(true);
+          } catch (err) {
+            console.error('Erro ao restaurar foto:', err);
+            toast('Erro ao restaurar foto.');
+            resolve(false);
+          }
+        },
+        onCancel: () => resolve(false)
+      });
+    });
+    
+  } catch (err) {
+    console.error('Erro na reversão:', err);
+    toast('Erro ao reverter foto.');
+  }
+}
+
+/**
+ * Divisão manual de uma foto em 2×2 (botão na galeria)
+ * @returns {Array|null} Array com as novas fotos se confirmado, null se cancelado
+ */
+async function handleManualSplit(photo) {
+  try {
+    const imageSource = photo.dataURL || photo.thumb;
+    
+    if (!imageSource) {
+      toast('Erro: Imagem não encontrada.');
+      return null;
+    }
+    
+    // Carregar imagem completa
+    const img = await loadImageFromURL(imageSource);
+    
+    // Abrir cropper e aguardar resultado (sem sugerir regiões - divisão manual)
+    const quadrants = await openCropper(imageSource);
+    
+    if (!quadrants || quadrants.length === 0) {
+      return null; // Cancelado pelo usuário
+    }
+    
+    // Preparar novas fotos (4 quadrantes)
+    const newPhotos = quadrants.map((q, i) => ({
+      id: crypto.randomUUID(),
+      dataURL: q.dataURL,
+      thumb: q.dataURL,
+      w: q.width,
+      h: q.height,
+      uploadedAt: Date.now() + i,
+      rating: null,
+      _parentId: photo.id,
+      _quadrant: q.quadrant
+    }));
+    
+    // Marcar original como dividida
+    const updatedOriginal = { ...photo, _isSplit: true };
+    
+    // Salvar tudo: original atualizada + 4 novas
+    await savePhotos([updatedOriginal, ...newPhotos]);
+    
+    // Re-renderizar grid
+    renderGrid(await getAllPhotos());
+    
+    toast(`Foto dividida manualmente em 4 quadrantes.`);
+    
+    return newPhotos;
+    
+  } catch (err) {
+    console.error('Erro ao dividir foto:', err);
+    toast('Erro ao dividir foto.');
+    return null;
+  }
+}
+
+async function processCropQueue(candidates) {
+  let splitCount = 0;
+  let totalQuadrants = 0;
+  
+  for (let i = 0; i < candidates.length; i++) {
+    const { photo, analysis } = candidates[i];
+    
+    // Mostrar progresso
+    if (candidates.length > 1) {
+      toast(`Ajustando imagem ${i + 1} de ${candidates.length}...`);
+    } else {
+      toast(`Imagem 2×2 detectada. Ajuste o corte.`);
+    }
+    
+    try {
+      // Converter thumb para Blob
+      const response = await fetch(photo.thumb);
+      const blob = await response.blob();
+      
+      // Abrir cropper e aguardar usuário
+      const quadrants = await openCropper(blob, analysis.suggestedRegions);
+      
+      if (quadrants && quadrants.length === 4) {
+        // Usuário confirmou: salvar 4 fotos
+        const quadrantPhotos = quadrants.map(({ dataURL, width, height, quadrant }, idx) => ({
+          id: crypto.randomUUID(),
+          dataURL: dataURL,
+          thumb: dataURL,
+          w: width,
+          h: height,
+          uploadedAt: Date.now() + idx,
+          rating: null,
+          _parentId: photo.id,
+          _quadrant: quadrant
+        }));
+        
+        // Marcar original como dividida
+        photo._isSplit = true;
+        
+        // Salvar original (oculta) e quadrantes
+        await savePhotos([photo, ...quadrantPhotos]);
+        
+        splitCount++;
+        totalQuadrants += 4;
+      } else {
+        // Usuário cancelou: salvar original normalmente
+        await savePhotos([photo]);
+      }
+    } catch (error) {
+      console.error('Erro ao processar cropper:', error);
+      // Em caso de erro, salvar original
+      await savePhotos([photo]);
+    }
+  }
+  
+  return { splitCount, totalQuadrants };
+}
+
+/**
+ * Converte Blob para DataURL
+ */
+function blobToDataURL(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+}
+
+/**
+ * Carrega Image a partir de URL
+ */
+function loadImageFromURL(url) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = url;
+  });
 }
 
 // helpers de progresso (adicione no arquivo)
@@ -274,34 +581,63 @@ let selectionMode = false;
 let selectedIds = new Set();
 
 function renderGrid(photos) {
+  // Sprint 2: Filtrar fotos divididas (originais com _isSplit)
+  const visiblePhotos = photos.filter(p => !p._isSplit);
+  
   const grid = $("#grid");
   grid.innerHTML = "";
-  $("#countInfo").textContent = `${photos.length} imagens`;
+  $("#countInfo").textContent = `${visiblePhotos.length} imagens`;
 
   // habilita ou desabilita o botão "Limpar" conforme existência de fotos
   const clearBtn = $("#clearAll");
-  if (clearBtn) clearBtn.disabled = photos.length === 0;
+  if (clearBtn) clearBtn.disabled = visiblePhotos.length === 0;
 
-  photos.forEach((p, idx) => {
+  visiblePhotos.forEach((p, idx) => {
     const badges = [];
-    if (p.parentId)
+    // Badge "Cortado" para fotos geradas por divisão 2×2
+    if (p._parentId)
       badges.push('<span class="badge badge-split">Cortado</span>');
+    // Badge de rating (quando implementado)
     if (typeof p.rating === "number" && p.rating > 0)
       badges.push(`<span class="badge badge-rated">★ ${p.rating}</span>`);
-    if (!p.rating) badges.push('<span class="badge badge-new">Novo</span>');
+    // Badge "Novo" para fotos sem rating (independente se é cortada ou não)
+    if (!p.rating) 
+      badges.push('<span class="badge badge-new">Novo</span>');
 
     const card = document.createElement("article");
     card.className = "photo-card";
     card.dataset.id = p.id;
     card.tabIndex = 0;
     if (selectedIds.has(p.id)) card.classList.add("selected");
+    
+    // Decidir botão de ação: Dividir ou Restaurar
+    const isCropped = !!p._parentId;
+    const actionButton = isCropped ? `
+      <button class="icon-btn revert-btn" data-tooltip="Restaurar foto original" aria-label="Restaurar original" data-action="revert">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path>
+          <path d="M3 3v5h5"></path>
+        </svg>
+      </button>
+    ` : `
+      <button class="icon-btn split-btn" data-tooltip="Dividir manualmente em 2×2" aria-label="Dividir em 2×2" data-action="split">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="3" y="3" width="8" height="8" rx="1"/>
+          <rect x="13" y="3" width="8" height="8" rx="1"/>
+          <rect x="3" y="13" width="8" height="8" rx="1"/>
+          <rect x="13" y="13" width="8" height="8" rx="1"/>
+        </svg>
+      </button>
+    `;
+    
     card.innerHTML = `
       <img src="${
         p.thumb
       }" alt="Foto importada" loading="lazy" decoding="async">
       <div class="photo-meta">${Math.round(p.w)}×${Math.round(p.h)}</div>
       <div class="photo-actions">
-        <button class="icon-btn" title="Remover" aria-label="Remover"><span class="x">✕</span></button>
+        ${actionButton}
+        <button class="icon-btn remove-btn" data-tooltip="Remover" aria-label="Remover" data-action="remove"><span class="x">✕</span></button>
       </div>
       <div class="photo-badges">${badges.join("")}</div>
     `;
@@ -313,6 +649,7 @@ function renderGrid(photos) {
 
     // abrir viewer OU selecionar, conforme modo
     card.addEventListener("click", (ev) => {
+      // Ignorar cliques em botões de ação
       if (ev.target.closest(".icon-btn")) return;
 
       if (selectionMode) {
@@ -332,8 +669,28 @@ function renderGrid(photos) {
       }
     });
 
+    // dividir manualmente em 2×2
+    const splitBtn = card.querySelector(".split-btn");
+    if (splitBtn) {
+      splitBtn.addEventListener("click", async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        await handleManualSplit(p);
+      });
+    }
+    
+    // restaurar foto original (reverter corte)
+    const revertBtn = card.querySelector(".revert-btn");
+    if (revertBtn) {
+      revertBtn.addEventListener("click", async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        await handleRevert(p);
+      });
+    }
+
     // remover individual (sem afetar seleção)
-    const removeBtn = card.querySelector(".icon-btn");
+    const removeBtn = card.querySelector(".remove-btn");
     removeBtn.addEventListener("click", async (e) => {
       e.stopPropagation();
       card.classList.add("removing");
@@ -425,7 +782,10 @@ let currentIndex = -1;
 let currentList = [];
 
 async function openViewer(index) {
-  currentList = await getAllPhotos();
+  const allPhotos = await getAllPhotos();
+  // Filtrar fotos divididas (originais marcadas com _isSplit)
+  currentList = allPhotos.filter(p => !p._isSplit);
+  
   if (!currentList.length) return;
   currentIndex = Math.max(0, Math.min(index, currentList.length - 1));
   const v = document.getElementById("viewer");
@@ -434,6 +794,44 @@ async function openViewer(index) {
   v.setAttribute("aria-hidden", "false");
   // teclas
   document.addEventListener("keydown", viewerKeys);
+  // resetar zoom ao abrir/trocar imagem
+  resetZoom();
+  // atualizar botão dividir/restaurar
+  updateViewerSplitButton();
+}
+
+function updateViewerSplitButton() {
+  if (currentIndex < 0 || !currentList.length) return;
+  
+  const photo = currentList[currentIndex];
+  const isCropped = !!photo._parentId;
+  const btn = document.querySelector(".viewer-split");
+  
+  if (!btn) return;
+  
+  if (isCropped) {
+    // Mudar para ícone de restaurar (undo)
+    btn.setAttribute('data-tooltip', 'Restaurar foto original');
+    btn.setAttribute('aria-label', 'Restaurar original');
+    btn.innerHTML = `
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path>
+        <path d="M3 3v5h5"></path>
+      </svg>
+    `;
+  } else {
+    // Ícone padrão de dividir
+    btn.setAttribute('data-tooltip', 'Dividir em 2×2');
+    btn.setAttribute('aria-label', 'Dividir em 2×2');
+    btn.innerHTML = `
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <rect x="3" y="3" width="8" height="8" rx="1"/>
+        <rect x="13" y="3" width="8" height="8" rx="1"/>
+        <rect x="3" y="13" width="8" height="8" rx="1"/>
+        <rect x="13" y="13" width="8" height="8" rx="1"/>
+      </svg>
+    `;
+  }
 }
 function closeViewer() {
   const v = document.getElementById("viewer");
@@ -441,10 +839,14 @@ function closeViewer() {
   document.removeEventListener("keydown", viewerKeys);
 }
 function viewerPrev() {
-  if (currentIndex > 0) openViewer(currentIndex - 1);
+  if (currentIndex > 0) {
+    openViewer(currentIndex - 1);
+  }
 }
 function viewerNext() {
-  if (currentIndex < currentList.length - 1) openViewer(currentIndex + 1);
+  if (currentIndex < currentList.length - 1) {
+    openViewer(currentIndex + 1);
+  }
 }
 function viewerKeys(e) {
   if (confirmOpen) {
@@ -461,6 +863,19 @@ function viewerKeys(e) {
   ) {
     e.preventDefault();
     onViewerDelete();
+  }
+  // Atalhos de zoom
+  if (e.key === "+" || e.key === "=") {
+    e.preventDefault();
+    zoomBy(ZOOM_STEP);
+  }
+  if (e.key === "-" || e.key === "_") {
+    e.preventDefault();
+    zoomBy(-ZOOM_STEP);
+  }
+  if (e.key === "0") {
+    e.preventDefault();
+    resetZoom();
   }
 }
 
@@ -498,6 +913,10 @@ document
   .querySelector(".viewer-delete")
   ?.addEventListener("click", onViewerDelete);
 
+document
+  .querySelector(".viewer-split")
+  ?.addEventListener("click", onViewerSplit);
+
 function onViewerDelete() {
   if (currentIndex < 0 || !currentList.length) return;
   const photo = currentList[currentIndex];
@@ -510,6 +929,48 @@ function onViewerDelete() {
   });
 }
 
+async function onViewerSplit() {
+  if (currentIndex < 0 || !currentList.length) return;
+  const photo = currentList[currentIndex];
+  const isCropped = !!photo._parentId;
+  
+  if (isCropped) {
+    // Reverter: restaurar original
+    const reverted = await handleRevert(photo);
+    
+    if (reverted) {
+      // Foto foi revertida: abrir a original no viewer
+      const allPhotos = await getAllPhotos();
+      const visiblePhotos = allPhotos.filter(p => !p._isSplit);
+      const originalIndex = visiblePhotos.findIndex(p => p.id === photo._parentId);
+      
+      if (originalIndex >= 0) {
+        openViewer(originalIndex);
+      } else {
+        closeViewer();
+      }
+    }
+  } else {
+    // Dividir: cortar em 2×2
+    const newPhotos = await handleManualSplit(photo);
+    
+    // Atualizar viewer apenas se confirmou
+    if (newPhotos && newPhotos.length > 0) {
+      const allPhotos = await getAllPhotos();
+      const visiblePhotos = allPhotos.filter(p => !p._isSplit);
+      const newIndex = visiblePhotos.findIndex(p => p.id === newPhotos[0].id);
+      
+      if (newIndex >= 0) {
+        currentList = visiblePhotos;
+        currentIndex = newIndex;
+        const img = document.getElementById("viewerImg");
+        img.src = currentList[currentIndex].thumb;
+        updateViewerSplitButton();
+      }
+    }
+  }
+}
+
 async function deleteCurrentAndAdvance() {
   try {
     // 1) deleta atual
@@ -517,10 +978,13 @@ async function deleteCurrentAndAdvance() {
     await savePhotos([{ ...victim, _delete: true }]);
 
     // 2) recarrega lista global e re-renderiza grid
-    const fresh = await getAllPhotos();
-    renderGrid(fresh);
+    const allPhotos = await getAllPhotos();
+    renderGrid(allPhotos);
 
-    if (!fresh.length) {
+    // Filtrar fotos divididas para o viewer
+    const visiblePhotos = allPhotos.filter(p => !p._isSplit);
+
+    if (!visiblePhotos.length) {
       // nada restou: fecha viewer
       toast("Imagem removida.");
       closeViewer();
@@ -529,8 +993,8 @@ async function deleteCurrentAndAdvance() {
 
     // 3) recalcula índice seguro
     // mapeia para achar o mesmo id (pode ter saído), então usa clamp
-    const newIndex = Math.min(currentIndex, fresh.length - 1);
-    currentList = fresh;
+    const newIndex = Math.min(currentIndex, visiblePhotos.length - 1);
+    currentList = visiblePhotos;
     currentIndex = newIndex;
 
     // 4) atualiza imagem exibida
@@ -628,3 +1092,226 @@ function closeConfirm() {
   m._cleanup = null;
   if (lastFocusedEl?.focus) setTimeout(() => lastFocusedEl.focus(), 0);
 }
+
+// ========================================
+//  ZOOM E PAN NO VIEWER
+// ========================================
+
+let zoomScale = 1;
+let zoomTranslateX = 0;
+let zoomTranslateY = 0;
+let isPanning = false;
+let panStartX = 0;
+let panStartY = 0;
+let lastTouchDistance = 0;
+
+const MIN_ZOOM = 1;
+const MAX_ZOOM = 4;
+const ZOOM_STEP = 0.3;
+
+function initViewerZoom() {
+  const container = $('#viewerImgContainer');
+  const img = $('#viewerImg');
+  const zoomInBtn = $('#zoomIn');
+  const zoomOutBtn = $('#zoomOut');
+  const zoomResetBtn = $('#zoomReset');
+  const zoomLevelEl = $('#zoomLevel');
+  
+  if (!container || !img) return;
+  
+  // Botões de zoom
+  zoomInBtn?.addEventListener('click', () => zoomBy(ZOOM_STEP));
+  zoomOutBtn?.addEventListener('click', () => zoomBy(-ZOOM_STEP));
+  zoomResetBtn?.addEventListener('click', resetZoom);
+  
+  // Scroll do mouse para zoom
+  container.addEventListener('wheel', handleWheel, { passive: false });
+  
+  // Pan (arrastar) quando com zoom
+  container.addEventListener('mousedown', handlePanStart);
+  document.addEventListener('mousemove', handlePanMove);
+  document.addEventListener('mouseup', handlePanEnd);
+  
+  // Touch: pinch-to-zoom e pan
+  container.addEventListener('touchstart', handleTouchStart, { passive: false });
+  container.addEventListener('touchmove', handleTouchMove, { passive: false });
+  container.addEventListener('touchend', handleTouchEnd);
+  
+  // Resetar zoom ao trocar de imagem
+  document.addEventListener('viewerImageChanged', resetZoom);
+}
+
+function handleWheel(e) {
+  if (!$('#viewer').matches('[aria-hidden="false"]')) return;
+  
+  e.preventDefault();
+  const delta = e.deltaY < 0 ? ZOOM_STEP : -ZOOM_STEP;
+  zoomBy(delta, e.clientX, e.clientY);
+}
+
+function zoomBy(delta, clientX, clientY) {
+  const newScale = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, zoomScale + delta));
+  
+  if (newScale === zoomScale) return;
+  
+  const container = $('#viewerImgContainer');
+  const rect = container.getBoundingClientRect();
+  
+  // Zoom em direção ao ponto do cursor (se fornecido)
+  if (clientX !== undefined && clientY !== undefined) {
+    const x = clientX - rect.left - rect.width / 2;
+    const y = clientY - rect.top - rect.height / 2;
+    
+    const factor = newScale / zoomScale;
+    zoomTranslateX = x - (x - zoomTranslateX) * factor;
+    zoomTranslateY = y - (y - zoomTranslateY) * factor;
+  }
+  
+  zoomScale = newScale;
+  updateZoom();
+}
+
+function resetZoom() {
+  zoomScale = 1;
+  zoomTranslateX = 0;
+  zoomTranslateY = 0;
+  updateZoom();
+}
+
+function updateZoom() {
+  const img = $('#viewerImg');
+  const zoomLevelEl = $('#zoomLevel');
+  const zoomInBtn = $('#zoomIn');
+  const zoomOutBtn = $('#zoomOut');
+  
+  if (!img) return;
+  
+  // Aplicar transformação
+  img.style.transform = `scale(${zoomScale}) translate(${zoomTranslateX / zoomScale}px, ${zoomTranslateY / zoomScale}px)`;
+  
+  // Atualizar UI
+  if (zoomLevelEl) {
+    zoomLevelEl.textContent = `${Math.round(zoomScale * 100)}%`;
+  }
+  
+  // Habilitar/desabilitar botões
+  if (zoomInBtn) zoomInBtn.disabled = zoomScale >= MAX_ZOOM;
+  if (zoomOutBtn) zoomOutBtn.disabled = zoomScale <= MIN_ZOOM;
+  
+  // Cursor
+  const container = $('#viewerImgContainer');
+  if (container) {
+    container.style.cursor = zoomScale > 1 ? 'grab' : 'default';
+  }
+}
+
+// Pan (arrastar)
+function handlePanStart(e) {
+  if (zoomScale <= 1) return;
+  
+  isPanning = true;
+  panStartX = e.clientX - zoomTranslateX;
+  panStartY = e.clientY - zoomTranslateY;
+  
+  const container = $('#viewerImgContainer');
+  container.classList.add('grabbing');
+  container.style.cursor = 'grabbing';
+}
+
+function handlePanMove(e) {
+  if (!isPanning) return;
+  
+  e.preventDefault();
+  const newX = e.clientX - panStartX;
+  const newY = e.clientY - panStartY;
+  
+  // Aplicar limites para não arrastar muito além das bordas
+  const container = $('#viewerImgContainer');
+  const img = $('#viewerImg');
+  if (container && img) {
+    const containerRect = container.getBoundingClientRect();
+    const maxTranslate = Math.max(containerRect.width, containerRect.height) * (zoomScale - 1) * 0.6;
+    
+    zoomTranslateX = Math.max(-maxTranslate, Math.min(maxTranslate, newX));
+    zoomTranslateY = Math.max(-maxTranslate, Math.min(maxTranslate, newY));
+  } else {
+    zoomTranslateX = newX;
+    zoomTranslateY = newY;
+  }
+  
+  updateZoom();
+}
+
+function handlePanEnd() {
+  if (!isPanning) return;
+  
+  isPanning = false;
+  const container = $('#viewerImgContainer');
+  container.classList.remove('grabbing');
+  container.style.cursor = zoomScale > 1 ? 'grab' : 'default';
+}
+
+// Touch: pinch-to-zoom
+function handleTouchStart(e) {
+  if (e.touches.length === 2) {
+    e.preventDefault();
+    const dist = getTouchDistance(e.touches);
+    lastTouchDistance = dist;
+  } else if (e.touches.length === 1 && zoomScale > 1) {
+    // Pan com um dedo (se tiver zoom)
+    isPanning = true;
+    panStartX = e.touches[0].clientX - zoomTranslateX;
+    panStartY = e.touches[0].clientY - zoomTranslateY;
+  }
+}
+
+function handleTouchMove(e) {
+  if (e.touches.length === 2) {
+    e.preventDefault();
+    const dist = getTouchDistance(e.touches);
+    const delta = (dist - lastTouchDistance) * 0.01;
+    lastTouchDistance = dist;
+    
+    const centerX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+    const centerY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+    
+    zoomBy(delta, centerX, centerY);
+  } else if (e.touches.length === 1 && isPanning) {
+    e.preventDefault();
+    const newX = e.touches[0].clientX - panStartX;
+    const newY = e.touches[0].clientY - panStartY;
+    
+    // Aplicar limites para não arrastar muito além das bordas
+    const container = $('#viewerImgContainer');
+    if (container) {
+      const containerRect = container.getBoundingClientRect();
+      const maxTranslate = Math.max(containerRect.width, containerRect.height) * (zoomScale - 1) * 0.6;
+      
+      zoomTranslateX = Math.max(-maxTranslate, Math.min(maxTranslate, newX));
+      zoomTranslateY = Math.max(-maxTranslate, Math.min(maxTranslate, newY));
+    } else {
+      zoomTranslateX = newX;
+      zoomTranslateY = newY;
+    }
+    
+    updateZoom();
+  }
+}
+
+function handleTouchEnd(e) {
+  if (e.touches.length < 2) {
+    lastTouchDistance = 0;
+  }
+  if (e.touches.length === 0) {
+    isPanning = false;
+  }
+}
+
+function getTouchDistance(touches) {
+  const dx = touches[0].clientX - touches[1].clientX;
+  const dy = touches[0].clientY - touches[1].clientY;
+  return Math.sqrt(dx * dx + dy * dy);
+}
+
+// Inicializar zoom quando o documento carregar
+document.addEventListener('DOMContentLoaded', initViewerZoom);
