@@ -123,9 +123,30 @@
     >
       <button class="viewer-close" aria-label="Fechar (Esc)">&times;</button>
       <button class="viewer-prev" aria-label="Anterior">&#10094;</button>
-      <img id="viewerImg" alt="Visualização da foto" />
+      
+      <div class="viewer-image-container" id="viewerImgContainer">
+        <img id="viewerImg" alt="Visualização da foto" />
+      </div>
+      
       <button class="viewer-next" aria-label="Próxima">&#10095;</button>
-      <button class="viewer-delete" aria-label="Remover esta imagem">
+      
+      <!-- Controles de Zoom -->
+      <div class="viewer-zoom-controls">
+        <button class="viewer-zoom-btn" id="zoomOut" data-tooltip="Zoom out (-)" aria-label="Diminuir zoom">−</button>
+        <span class="viewer-zoom-level" id="zoomLevel">100%</span>
+        <button class="viewer-zoom-btn" id="zoomIn" data-tooltip="Zoom in (+)" aria-label="Aumentar zoom">+</button>
+        <button class="viewer-zoom-btn" id="zoomReset" data-tooltip="Resetar zoom (0)" aria-label="Resetar zoom">⊗</button>
+      </div>
+      
+      <button class="viewer-split" data-tooltip="Dividir em 2×2" aria-label="Dividir em 2×2">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="3" y="3" width="8" height="8" rx="1"/>
+          <rect x="13" y="3" width="8" height="8" rx="1"/>
+          <rect x="3" y="13" width="8" height="8" rx="1"/>
+          <rect x="13" y="13" width="8" height="8" rx="1"/>
+        </svg>
+      </button>
+      <button class="viewer-delete" data-tooltip="Remover" aria-label="Remover esta imagem">
         &#128465;
       </button>
     </div>
@@ -153,6 +174,35 @@
             Cancelar (Esc)
           </button>
           <button id="confirmOk" class="btn btn-danger">Remover</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Cropper Modal (Sprint 2) -->
+    <div
+      id="cropperModal"
+      class="modal"
+      aria-hidden="true"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="cropperTitle"
+    >
+      <div class="cropper-dialog">
+        <h3 id="cropperTitle">Ajustar corte 2×2</h3>
+        <p class="cropper-hint">
+          Arraste as guias para ajustar o corte. As 4 fotos serão criadas
+          automaticamente.
+        </p>
+        <div class="cropper-canvas-wrap">
+          <canvas id="cropperCanvas"></canvas>
+        </div>
+        <div class="cropper-preview" aria-label="Preview dos quadrantes"></div>
+        <div class="cropper-actions">
+          <button id="cropperReset" class="btn btn-secondary">Resetar</button>
+          <button id="cropperCancel" class="btn btn-secondary">
+            Cancelar (Esc)
+          </button>
+          <button id="cropperConfirm" class="btn">Confirmar corte</button>
         </div>
       </div>
     </div>
