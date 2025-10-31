@@ -15,8 +15,10 @@ import { createStarRating, updateStarRating } from "./rating.js";
 import { 
   calculateElo, 
   initializeEloScores, 
-  generatePairings, 
-  updateEloScores 
+  generateEliminationBracket,
+  updateEloScores,
+  getChampion,
+  generateRanking
 } from "./elo.js";
 
 const MAX_SIZE_MB = 15;
@@ -35,8 +37,19 @@ let rateViewIndex = 0; // Índice atual na aba "Avaliar"
 let rateViewPhotos = []; // Lista de fotos para avaliar (filtrada)
 let rateViewOnlyUnrated = false; // Filtro "apenas não avaliadas"
 
-// Sprint 4: Estado do Contest
-let contestState = null; // { phase, qualifiedPhotos, pairings, currentMatchIndex, eloScores, battleHistory }
+// Sprint 4: Estado do Contest (Eliminatória)
+let contestState = null; 
+// {
+//   phase: 'battle' | 'finished',
+//   qualifiedPhotos: Photo[],
+//   allMatches: [{photoA, photoB, round}, ...],  // Todos os confrontos (flat)
+//   currentMatchIndex: number,
+//   currentRound: number,
+//   totalRounds: number,
+//   roundParticipants: Photo[],  // Participantes da rodada atual
+//   eloScores: { photoId: rating },
+//   battleHistory: [{ photoA, photoB, winner, round, ... }]
+// }
 
 // Opções de ordenação
 const SORT_OPTIONS = {
@@ -72,6 +85,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   initFilters(); // Sprint 3
   initRateView(); // Sprint 3
   initContestView(); // Sprint 4
+  initResultsView(); // Sprint 4
   
   const selectBtn = document.getElementById("selectModeBtn");
   selectBtn?.addEventListener("click", () => toggleSelectionMode());
@@ -1780,7 +1794,7 @@ async function renderContestView() {
 }
 
 /**
- * Inicia um novo contest
+ * Inicia um novo contest (sistema de eliminatória)
  */
 async function startContest() {
   const allPhotos = await getAllPhotos();
@@ -1792,22 +1806,43 @@ async function startContest() {
     return;
   }
   
-  // Inicializar estado do contest
+  // Inicializar scores Elo
   const eloScores = initializeEloScores(qualifiedPhotos);
-  const pairings = generatePairings(qualifiedPhotos, eloScores, []);
+  
+  // Gerar bracket de eliminatória completo
+  const bracket = generateEliminationBracket(qualifiedPhotos, eloScores);
+  
+  // Converter rounds em lista flat de confrontos com metadados
+  const allMatches = [];
+  bracket.rounds.forEach((roundPairs, roundIndex) => {
+    roundPairs.forEach(pair => {
+      allMatches.push({
+        photoA: pair.photoA,
+        photoB: pair.photoB,
+        round: roundIndex + 1
+      });
+    });
+  });
+  
+  // Calcular total de rodadas
+  const totalRounds = bracket.rounds.length;
   
   contestState = {
     phase: 'battle',
     qualifiedPhotos: qualifiedPhotos,
-    pairings: pairings,
+    allMatches: allMatches,
     currentMatchIndex: 0,
+    currentRound: 1,
+    totalRounds: totalRounds,
+    roundParticipants: [...qualifiedPhotos], // Rodada 1 = todos
     eloScores: eloScores,
     battleHistory: []
   };
   
   saveContestState();
   renderBattle();
-  toast(`Contest iniciado! ${pairings.length} confrontos gerados.`);
+  
+  toast(`Contest iniciado! ${qualifiedPhotos.length} participantes, ${totalRounds} rodada${totalRounds > 1 ? 's' : ''}, ${allMatches.length} confrontos.`);
 }
 
 /**
@@ -1817,24 +1852,31 @@ function renderBattle() {
   const container = $('#contestView');
   if (!container || !contestState) return;
   
-  const { pairings, currentMatchIndex, eloScores } = contestState;
+  const { allMatches, currentMatchIndex, eloScores, currentRound, totalRounds } = contestState;
   
-  if (currentMatchIndex >= pairings.length) {
-    // Contest finalizado
+  // Verificar se contest terminou
+  if (currentMatchIndex >= allMatches.length) {
     finishContest();
     return;
   }
   
-  const currentPair = pairings[currentMatchIndex];
-  const photoA = currentPair.photoA;
-  const photoB = currentPair.photoB;
+  const currentMatch = allMatches[currentMatchIndex];
+  const photoA = currentMatch.photoA;
+  const photoB = currentMatch.photoB;
   const eloA = eloScores[photoA.id] || 1500;
   const eloB = eloScores[photoB.id] || 1500;
+  
+  // Contar confrontos da rodada atual
+  const currentRoundMatches = allMatches.filter(m => m.round === currentRound);
+  const currentRoundIndex = currentRoundMatches.findIndex(m => 
+    m.photoA.id === photoA.id && m.photoB.id === photoB.id
+  ) + 1;
   
   container.innerHTML = `
     <div class="contest-battle">
       <div class="contest-progress">
-        Confronto <span class="current">${currentMatchIndex + 1}</span> de ${pairings.length}
+        <strong>Rodada ${currentRound} de ${totalRounds}</strong><br>
+        Confronto <span class="current">${currentRoundIndex}</span> de ${currentRoundMatches.length}
       </div>
       
       <div class="battle-container">
@@ -1905,16 +1947,18 @@ function handleBattleKeys(e) {
 }
 
 /**
- * Registra vencedor de um confronto
+ * Registra vencedor de um confronto (sistema de eliminatória)
  */
 async function chooseBattleWinner(winner) {
   if (!contestState || contestState.phase !== 'battle') return;
   
-  const { pairings, currentMatchIndex, eloScores } = contestState;
-  const currentPair = pairings[currentMatchIndex];
+  const { allMatches, currentMatchIndex, eloScores, currentRound } = contestState;
+  const currentMatch = allMatches[currentMatchIndex];
   
-  const winnerId = winner === 'A' ? currentPair.photoA.id : currentPair.photoB.id;
-  const loserId = winner === 'A' ? currentPair.photoB.id : currentPair.photoA.id;
+  const winnerPhoto = winner === 'A' ? currentMatch.photoA : currentMatch.photoB;
+  const loserPhoto = winner === 'A' ? currentMatch.photoB : currentMatch.photoA;
+  const winnerId = winnerPhoto.id;
+  const loserId = loserPhoto.id;
   
   // Calcular novos ratings
   const winnerElo = eloScores[winnerId];
@@ -1926,27 +1970,94 @@ async function chooseBattleWinner(winner) {
   
   // Salvar no histórico
   contestState.battleHistory.push({
-    photoA: currentPair.photoA.id,
-    photoB: currentPair.photoB.id,
+    photoA: currentMatch.photoA.id,
+    photoB: currentMatch.photoB.id,
     winner: winnerId,
+    round: currentRound,
     timestamp: Date.now(),
     eloChange: result.change
   });
   
   // Feedback visual
-  const winnerPhoto = winner === 'A' ? $('#battlePhotoA') : $('#battlePhotoB');
-  if (winnerPhoto) {
-    winnerPhoto.style.borderColor = '#3ddc97';
-    winnerPhoto.style.transform = 'scale(1.05)';
+  const winnerElement = winner === 'A' ? $('#battlePhotoA') : $('#battlePhotoB');
+  if (winnerElement) {
+    winnerElement.style.borderColor = '#3ddc97';
+    winnerElement.style.transform = 'scale(1.05)';
   }
   
   toast(`Foto ${winner} venceu! ${result.change.winner > 0 ? '+' : ''}${result.change.winner} Elo`);
   
-  // Avançar para próximo confronto após delay
+  // Avançar índice
+  contestState.currentMatchIndex++;
+  
+  // Verificar se rodada atual terminou
+  const currentRoundMatches = allMatches.filter(m => m.round === currentRound);
+  const currentRoundCompletedMatches = contestState.battleHistory.filter(h => h.round === currentRound);
+  
+  if (currentRoundCompletedMatches.length === currentRoundMatches.length) {
+    // Rodada terminou! Preparar próxima rodada
+    await advanceToNextRound();
+  } else {
+    // Continuar na mesma rodada
+    saveContestState();
+    await new Promise(resolve => setTimeout(resolve, 800));
+    renderBattle();
+  }
+}
+
+/**
+ * Avança para próxima rodada (gera novos confrontos com os vencedores)
+ */
+async function advanceToNextRound() {
+  if (!contestState) return;
+  
+  const { currentRound, totalRounds, battleHistory, eloScores } = contestState;
+  
+  // Obter vencedores da rodada atual
+  const currentRoundBattles = battleHistory.filter(h => h.round === currentRound);
+  const winnerIds = currentRoundBattles.map(h => h.winner);
+  const winners = contestState.qualifiedPhotos.filter(p => winnerIds.includes(p.id));
+  
+  // Se sobrou apenas 1 vencedor, contest finalizado
+  if (winners.length === 1) {
+    contestState.phase = 'finished';
+    saveContestState();
+    
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    toast(`🏆 Contest finalizado! Campeão definido!`);
+    
+    setTimeout(() => {
+      location.hash = '#/results';
+    }, 1500);
+    return;
+  }
+  
+  // Gerar próxima rodada
+  toast(`Rodada ${currentRound} completa! ${winners.length} vencedores avançam.`);
+  await new Promise(resolve => setTimeout(resolve, 1500));
+  
+  contestState.currentRound++;
+  
+  // Gerar novos confrontos com os vencedores
+  const nextRoundBracket = generateEliminationBracket(winners, eloScores);
+  
+  // Adicionar confrontos da próxima rodada ao allMatches
+  const nextRound = contestState.currentRound;
+  nextRoundBracket.rounds[0]?.forEach(pair => {
+    contestState.allMatches.push({
+      photoA: pair.photoA,
+      photoB: pair.photoB,
+      round: nextRound
+    });
+  });
+  
+  contestState.roundParticipants = winners;
+  
+  saveContestState();
+  
+  toast(`Rodada ${nextRound} iniciada! ${nextRoundBracket.rounds[0]?.length || 0} confrontos.`);
   await new Promise(resolve => setTimeout(resolve, 800));
   
-  contestState.currentMatchIndex++;
-  saveContestState();
   renderBattle();
 }
 
@@ -1993,11 +2104,15 @@ function saveContestState() {
     const stateToSave = {
       phase: contestState.phase,
       qualifiedPhotoIds: contestState.qualifiedPhotos?.map(p => p.id) || [],
-      pairings: contestState.pairings?.map(pair => ({
-        photoA: pair.photoA.id,
-        photoB: pair.photoB.id
+      allMatches: contestState.allMatches?.map(match => ({
+        photoA: match.photoA.id,
+        photoB: match.photoB.id,
+        round: match.round
       })) || [],
       currentMatchIndex: contestState.currentMatchIndex,
+      currentRound: contestState.currentRound,
+      totalRounds: contestState.totalRounds,
+      roundParticipantIds: contestState.roundParticipants?.map(p => p.id) || [],
       eloScores: contestState.eloScores,
       battleHistory: contestState.battleHistory
     };
@@ -2026,16 +2141,24 @@ function loadContestState() {
       .map(id => allPhotos.find(p => p.id === id))
       .filter(Boolean);
     
-    const pairings = state.pairings.map(pair => ({
-      photoA: allPhotos.find(p => p.id === pair.photoA),
-      photoB: allPhotos.find(p => p.id === pair.photoB)
-    })).filter(pair => pair.photoA && pair.photoB);
+    const allMatches = state.allMatches?.map(match => ({
+      photoA: allPhotos.find(p => p.id === match.photoA),
+      photoB: allPhotos.find(p => p.id === match.photoB),
+      round: match.round
+    })).filter(match => match.photoA && match.photoB) || [];
+    
+    const roundParticipants = state.roundParticipantIds
+      ?.map(id => allPhotos.find(p => p.id === id))
+      .filter(Boolean) || [];
     
     contestState = {
       phase: state.phase,
       qualifiedPhotos: qualifiedPhotos,
-      pairings: pairings,
+      allMatches: allMatches,
       currentMatchIndex: state.currentMatchIndex,
+      currentRound: state.currentRound,
+      totalRounds: state.totalRounds,
+      roundParticipants: roundParticipants,
       eloScores: state.eloScores,
       battleHistory: state.battleHistory
     };
@@ -2044,6 +2167,153 @@ function loadContestState() {
     console.error('Erro ao carregar estado do contest:', err);
     contestState = null;
   }
+}
+
+// ========================================
+//  SPRINT 4: RESULTS & CHAMPION (F4.4)
+// ========================================
+
+/**
+ * Inicializa aba "Resultados"
+ */
+function initResultsView() {
+  window.addEventListener('hashchange', () => {
+    if (location.hash === '#/results') {
+      renderResultsView();
+    }
+  });
+  
+  if (location.hash === '#/results') {
+    setTimeout(() => renderResultsView(), 100);
+  }
+}
+
+/**
+ * Renderiza aba "Resultados"
+ */
+async function renderResultsView() {
+  const container = $('#resultsView');
+  if (!container) return;
+  
+  // Carregar estado do contest
+  loadContestState();
+  
+  if (!contestState || contestState.phase !== 'finished') {
+    // Sem contest finalizado
+    container.innerHTML = `
+      <div class="results-empty">
+        <div class="results-empty-icon">📊</div>
+        <h3>Nenhum contest finalizado ainda</h3>
+        <p class="muted">Complete um contest para ver os resultados e o campeão!</p>
+        <button class="btn" onclick="location.hash='#/contest'">Ir para Contest</button>
+      </div>
+    `;
+    return;
+  }
+  
+  // Gerar ranking
+  const ranking = generateRanking(
+    contestState.qualifiedPhotos, 
+    contestState.eloScores, 
+    contestState.battleHistory
+  );
+  
+  const championId = getChampion(contestState.eloScores);
+  const champion = ranking.find(p => p.id === championId);
+  
+  if (!champion) {
+    container.innerHTML = `
+      <div class="results-empty">
+        <div class="results-empty-icon">❌</div>
+        <h3>Erro ao carregar resultados</h3>
+        <button class="btn" onclick="location.hash='#/contest'">Voltar</button>
+      </div>
+    `;
+    return;
+  }
+  
+  // Renderizar resultados
+  container.innerHTML = `
+    <!-- Campeão -->
+    <div class="champion-card">
+      <div class="champion-icon">🏆</div>
+      <h2>Campeã</h2>
+      <div class="champion-image">
+        <img src="${champion.thumb}" alt="Foto campeã">
+      </div>
+      <div class="champion-stats">
+        <div class="stat">
+          <strong>${champion.elo}</strong>
+          <span>Rating Elo</span>
+        </div>
+        <div class="stat">
+          <strong class="ranking-wins">${champion.wins}</strong>
+          <span>Vitórias</span>
+        </div>
+        <div class="stat">
+          <strong class="ranking-losses">${champion.losses}</strong>
+          <span>Derrotas</span>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Ranking Completo -->
+    <div class="ranking-section">
+      <h3>Ranking Completo</h3>
+      <div id="rankingList" class="ranking-list"></div>
+    </div>
+    
+    <!-- Ações -->
+    <div class="results-actions">
+      <button class="btn btn-secondary" id="restartContest">🔄 Recomeçar Contest</button>
+      <button class="btn" onclick="location.hash='#/rate'">Voltar para Avaliação</button>
+    </div>
+  `;
+  
+  // Renderizar ranking
+  const rankingList = $('#rankingList');
+  ranking.forEach((photo, index) => {
+    const isChampion = photo.id === championId;
+    const item = document.createElement('div');
+    item.className = `ranking-item ${isChampion ? 'champion' : ''}`;
+    
+    item.innerHTML = `
+      <div class="ranking-position">${isChampion ? '🏆' : `#${index + 1}`}</div>
+      <div class="ranking-thumb">
+        <img src="${photo.thumb}" alt="Foto ${index + 1}">
+      </div>
+      <div class="ranking-info">
+        <div class="ranking-elo">Elo: ${photo.elo}</div>
+        <div class="ranking-record">
+          <span class="ranking-wins">${photo.wins}V</span> - 
+          <span class="ranking-losses">${photo.losses}D</span>
+          ${photo.total > 0 ? ` (${Math.round(photo.wins / photo.total * 100)}%)` : ''}
+        </div>
+      </div>
+    `;
+    
+    rankingList.appendChild(item);
+  });
+  
+  // Event listener para recomeçar
+  $('#restartContest')?.addEventListener('click', confirmRestartContest);
+}
+
+/**
+ * Confirma recomeço do contest
+ */
+function confirmRestartContest() {
+  openConfirm({
+    title: 'Recomeçar Contest?',
+    message: 'Todo o histórico e resultados serão perdidos. Deseja recomeçar?',
+    confirmText: 'Recomeçar',
+    onConfirm: () => {
+      contestState = null;
+      saveContestState();
+      location.hash = '#/contest';
+      toast('Contest resetado. Inicie um novo!');
+    }
+  });
 }
 
 /**
