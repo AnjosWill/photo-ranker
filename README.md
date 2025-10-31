@@ -57,7 +57,7 @@ npx http-server -p 5500
 - Hierarquia de z-index correta
 - Ícones semânticos (↺ para reverter, ⊗ para grade)
 
-### ✅ Sprint 3 (v0.3.0) — **Atual**
+### ✅ Sprint 3 (v0.3.0)
 **Sistema de Avaliação por Estrelas:**
 - Componente interativo de 5 estrelas (hover, click, touch, teclado)
 - Integração no grid (aparece ao passar mouse, sempre visível se avaliada)
@@ -106,6 +106,32 @@ npx http-server -p 5500
 - Layout responsivo sem scroll na aba "Avaliar"
 - Grid 1 coluna em telas < 400px (evita vazamento de estrelas)
 
+### ✅ Sprint 4 (v0.4.0) — **Atual**
+**Contest Mode - Sistema de Eliminatória:**
+- Interface de confronto lado a lado (A vs B)
+- Sistema de eliminatória progressiva (knockout/bracket)
+- Vencedores avançam rodada a rodada até definir campeão
+- Algoritmo Elo (FIDE) para ranking e pontuação
+- Progresso detalhado: "Rodada X de Y / Confronto A de B"
+- Interação: click, touch, atalhos (1/←, 2/→, Esc)
+
+**Tela de Resultados:**
+- Card do campeão com animações (🏆 bounce, gradient)
+- Ranking completo ordenado por Elo
+- Estatísticas: Elo final, vitórias, derrotas, win rate
+- Botão "Recomeçar Contest" (com confirmação)
+
+**Persistência:**
+- Estado salvo no localStorage (continuar de onde parou)
+- Histórico completo de batalhas por rodada
+- Elo scores atualizados em tempo real
+
+**UX/A11Y:**
+- Feedback visual: borda verde ao vencer, escala, toasts
+- Layout responsivo (lado a lado → vertical em mobile)
+- Navegação por teclado completa
+- Delay 800ms entre confrontos para ver feedback
+
 ## 🎯 Atalhos de Teclado
 
 | Tecla | Ação |
@@ -116,9 +142,11 @@ npx http-server -p 5500
 | **0** | Remover avaliação |
 | **Esc** | Fechar viewer/modal ou sair do modo seleção |
 | **Delete/D** | Remover foto (no viewer) |
-| **←/→** | Navegar entre fotos (viewer ou aba "Avaliar") |
+| **←/→** | Navegar entre fotos (viewer ou aba "Avaliar") / Foto A/B (Contest) |
 | **+/-** | Zoom in/out (viewer) |
 | **Shift+0** | Resetar zoom (viewer) |
+| **1** | Escolher Foto A (Contest) |
+| **2** | Escolher Foto B (Contest) |
 
 ## 📋 Estrutura do Projeto
 
@@ -134,7 +162,8 @@ photo-ranker/
 │   │   ├── image-utils.js         # Processamento de imagens
 │   │   ├── cropper.js             # Modal de corte 2×2
 │   │   ├── quad-worker.js         # Worker de detecção
-│   │   └── rating.js              # Componente de estrelas
+│   │   ├── rating.js              # Componente de estrelas
+│   │   └── elo.js                 # Sistema de ranking Elo
 │   └── styles/
 │       ├── base.css               # Layout e tokens
 │       └── components.css         # Componentes e microinterações
@@ -158,12 +187,11 @@ photo-ranker/
 - ✅ **Sprint 1** (v0.1.0): Upload, grid, viewer, multi-select
 - ✅ **Sprint 2** (v0.2.0): Detecção 2×2, cropper, zoom/pan
 - ✅ **Sprint 3** (v0.3.0): Rating, filtros, ordenação, aba "Avaliar"
-- 🔜 **Sprint 4**: Contest mode + múltiplos projetos
-- 🔜 **Sprint 5**: Exportação/importação + PWA
+- ✅ **Sprint 4** (v0.4.0): Contest Mode (eliminatória + Elo + resultados)
+- 🔜 **Sprint 5**: Múltiplos projetos + exportação/importação + PWA
 
 ## 📝 Próximos passos
-- Sprint 4: contest mode (Elo + mata-mata) + múltiplos projetos.
-- Sprint 5: exportação/importação + PWA + refinamentos.
+- Sprint 5: Múltiplos projetos + exportação/importação + PWA + refinamentos.
 
 ## 📄 Licença
 

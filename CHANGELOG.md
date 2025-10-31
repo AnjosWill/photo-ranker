@@ -1,6 +1,70 @@
 # Changelog
 Este projeto segue o formato **Keep a Changelog** e **SemVer**.
 
+## [v0.4.0] — 2025-10-31 (Sprint 4)
+### ✨ Funcionalidades
+**Contest Mode - Sistema de Eliminatória:**
+- **Interface de Contest**
+  - Aba "Contest" funcional com contador de fotos qualificadas (⭐5)
+  - Botão "Iniciar Contest" (habilitado quando ≥ 2 fotos ⭐5)
+  - Estados vazios: instruções claras e feedback visual
+- **Sistema de Eliminatória (Knockout)**
+  - Bracket automático: participantes batalham em rodadas progressivas
+  - Vencedores avançam para próxima rodada
+  - Continua até sobrar apenas 1 campeão
+  - Exemplo (8 fotos): Rodada 1 (4 confrontos) → Rodada 2 (2 confrontos) → Rodada 3 (1 confronto FINAL)
+- **Sistema Elo de Pontuação**
+  - Algoritmo Elo (FIDE padrão) para calcular ratings
+  - Rating inicial: 1500 para todos
+  - K-factor: 32 (balanceado)
+  - Atualização após cada confronto
+- **Interface de Batalha Interativa**
+  - Layout lado a lado (desktop) ou vertical (mobile)
+  - Progresso: "Rodada X de Y / Confronto A de B"
+  - Interação: click, touch, atalhos de teclado
+  - Atalhos: 1/← (Foto A), 2/→ (Foto B), Esc (cancelar)
+  - Feedback visual: borda verde ao vencer, escala 1.05
+  - Toast com mudança de Elo: "Foto A venceu! +16 Elo"
+  - Delay 800ms entre confrontos
+- **Tela de Resultados**
+  - Card do campeão com animações (bounce, gradient, entrance)
+  - Foto grande + ícone 🏆
+  - Estatísticas: Elo final, vitórias, derrotas
+  - Ranking completo ordenado por Elo
+  - Cada item: posição, miniatura, Elo, win rate
+  - Botão "🔄 Recomeçar Contest" (com confirmação)
+  - Navegação: "Voltar para Avaliação"
+
+**Persistência:**
+- Estado do contest salvo no localStorage
+- Continuar de onde parou (interromper e voltar)
+- Rodada atual, confrontos realizados, Elo scores
+- Histórico completo de batalhas
+
+### 🎨 UX e Interface
+- **Animações**: pulse no ícone 🏆, bounce no campeão, entrance animations
+- **Feedback Visual**: 
+  - Borda verde ao vencer
+  - Escala e hover nos confrontos
+  - Toasts informativos em cada etapa
+- **Progresso Detalhado**: "Rodada 2 de 3 / Confronto 1 de 2"
+- **Responsividade**: Layout adaptativo (lado a lado → vertical)
+- **Estados Vazios**: Mensagens claras e call-to-actions
+
+### ♿ Acessibilidade
+- ARIA labels em fotos de batalha
+- Navegação por teclado completa (1, 2, ←, →, Esc)
+- Foco visível em elementos interativos
+- Screen reader friendly
+
+### 📄 Documentação
+- Documentos de planejamento: F4.1-F4.4_PLAN.md
+- Casos de teste: F4.1-F4.4_TESTS.md (31 casos)
+- SPRINTS_4_5_STRATEGY.md (estratégia completa)
+- docs/sprint-4/ com toda documentação
+
+---
+
 ## [v0.3.0] — 2025-10-31 (Sprint 3)
 ### ✨ Funcionalidades
 **Sistema de Avaliação por Estrelas (1-5):**
