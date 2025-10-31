@@ -1,7 +1,17 @@
+/**
+ * app.js - Photo Ranker MVP
+ * Lógica principal da aplicação
+ * 
+ * Sprint 1: Upload, grid, viewer, multi-select
+ * Sprint 2: Detecção 2×2, cropper, zoom/pan
+ * Sprint 3: Rating por estrelas, filtros, ordenação, aba "Avaliar"
+ */
+
 import { $, on } from "./ui.js";
 import { savePhotos, getAllPhotos, clearAll } from "./db.js";
 import { filesToThumbs } from "./image-utils.js";
 import { openCropper } from "./cropper.js";
+import { createStarRating, updateStarRating } from "./rating.js";
 
 const MAX_SIZE_MB = 15;
 const MAX_FILES_PER_BATCH = 300;
@@ -10,6 +20,26 @@ const ACCEPTED_TYPES = /^image\/(jpeg|jpg|png|webp|heic|heif)$/i; // aceitamos H
 const routes = ["upload", "rate", "contest", "results"];
 
 let confirmOpen = false; // ⬅️ novo: bloqueia navegação do viewer quando true
+
+// Sprint 3: Estado de filtros e rating
+let currentFilter = 'all'; // 'all' | 'rated5' | 'unrated'
+let currentSort = 'date-desc'; // Ordenação ativa
+let allPhotos = []; // Cache de todas as fotos
+let rateViewIndex = 0; // Índice atual na aba "Avaliar"
+let rateViewPhotos = []; // Lista de fotos para avaliar (filtrada)
+let rateViewOnlyUnrated = false; // Filtro "apenas não avaliadas"
+
+// Opções de ordenação
+const SORT_OPTIONS = {
+  'date-desc': { label: '📅 Data (mais recente)', fn: (a, b) => (b.uploadedAt || 0) - (a.uploadedAt || 0) },
+  'date-asc': { label: '📅 Data (mais antiga)', fn: (a, b) => (a.uploadedAt || 0) - (b.uploadedAt || 0) },
+  'rating-desc': { label: '⭐ Avaliação (maior)', fn: (a, b) => (b.rating || 0) - (a.rating || 0) },
+  'rating-asc': { label: '⭐ Avaliação (menor)', fn: (a, b) => (a.rating || 0) - (b.rating || 0) },
+  'size-desc': { label: '📦 Tamanho (maior)', fn: (a, b) => (b.w * b.h) - (a.w * a.h) },
+  'size-asc': { label: '📦 Tamanho (menor)', fn: (a, b) => (a.w * a.h) - (b.w * b.h) },
+  'dimension-desc': { label: '📏 Dimensão (maior)', fn: (a, b) => Math.max(b.w, b.h) - Math.max(a.w, a.h) },
+  'dimension-asc': { label: '📏 Dimensão (menor)', fn: (a, b) => Math.max(a.w, a.h) - Math.max(b.w, b.h) }
+};
 
 function setActiveRoute(name) {
   routes.forEach((r) => {
@@ -30,6 +60,9 @@ window.addEventListener("hashchange", router);
 window.addEventListener("DOMContentLoaded", async () => {
   router();
   initUpload();
+  initFilters(); // Sprint 3
+  initRateView(); // Sprint 3
+  
   const selectBtn = document.getElementById("selectModeBtn");
   selectBtn?.addEventListener("click", () => toggleSelectionMode());
 
@@ -49,9 +82,32 @@ window.addEventListener("DOMContentLoaded", async () => {
       e.preventDefault();
       toggleSelectionMode(false); // ⬅️ sai do modo e limpa seleção
     }
+    
+    // Sprint 3: Atalhos de rating (1-5, 0) - Globais
+    // Apenas quando não está digitando E não está no viewer (viewer tem seus próprios handlers)
+    const viewerOpen = $('#viewer')?.getAttribute('aria-hidden') === 'false';
+    if (!viewerOpen && !typing && e.key >= '0' && e.key <= '5') {
+      // Tentar avaliar foto em foco no grid
+      const focusedCard = document.activeElement?.closest('.photo-card');
+      if (focusedCard) {
+        const photoId = focusedCard.dataset.id;
+        const rating = parseInt(e.key, 10);
+        setPhotoRating(photoId, rating);
+      }
+    }
   });
 
-  renderGrid(await getAllPhotos());
+  allPhotos = await getAllPhotos();
+  
+  // Carregar ordenação salva do localStorage
+  const savedSort = localStorage.getItem('photoranker-sort');
+  if (savedSort && SORT_OPTIONS[savedSort]) {
+    currentSort = savedSort;
+  }
+  
+  renderGrid(allPhotos);
+  updateFilterCounts(); // Atualizar contadores dos filtros
+  updateSortSelect(); // Atualizar select de ordenação
 });
 
 function toggleSelectionMode(force) {
@@ -166,7 +222,7 @@ function initUpload() {
     { passive: false }
   );
 
-  // Limpar tudo
+  // Limpar fotos (respeitando filtro ativo)
   $("#clearAll").addEventListener("click", async () => {
     if (selectedIds && selectedIds.size > 0) {
       // usa a função que já sai do modo após remover
@@ -174,16 +230,48 @@ function initUpload() {
       return;
     }
 
-    // sem seleção → modal para apagar tudo
+    // sem seleção → modal para apagar fotos do filtro ativo
+    const allPhotos = await getAllPhotos();
+    let visiblePhotos = allPhotos.filter(p => !p._isSplit);
+    
+    // Aplicar ordenação ativa
+    const sortFn = SORT_OPTIONS[currentSort]?.fn || SORT_OPTIONS['date-desc'].fn;
+    visiblePhotos.sort(sortFn);
+    
+    const photosToDelete = applyCurrentFilter(visiblePhotos);
+    
+    if (photosToDelete.length === 0) {
+      toast("Nenhuma foto para remover no filtro atual.");
+      return;
+    }
+    
+    // Mensagem contextual baseada no filtro
+    let filterName = "todas as";
+    let confirmMessage = "";
+    
+    if (currentFilter === 'rated5') {
+      filterName = "com ⭐ 5 estrelas";
+      confirmMessage = `Esta ação removerá ${photosToDelete.length} foto(s) ${filterName}.`;
+    } else if (currentFilter === 'unrated') {
+      filterName = "não avaliadas";
+      confirmMessage = `Esta ação removerá ${photosToDelete.length} foto(s) ${filterName}.`;
+    } else {
+      filterName = "todas";
+      confirmMessage = `Esta ação removerá TODAS as ${photosToDelete.length} fotos do projeto.`;
+    }
+    
     openConfirm({
-      title: "Limpar todas as imagens?",
-      message: "Esta ação é permanente e removerá todas as imagens do projeto.",
-      confirmText: "Remover tudo",
+      title: `Limpar ${photosToDelete.length} foto(s)?`,
+      message: confirmMessage,
+      confirmText: "Remover",
       onConfirm: async () => {
-        await clearAll();
+        // Marcar fotos para deletar
+        const toDelete = photosToDelete.map(p => ({ ...p, _delete: true }));
+        await savePhotos(toDelete);
+        
         toggleSelectionMode(false); // garante modo normal
-        renderGrid([]);
-        toast("Todas as imagens foram removidas.");
+        renderGrid(await getAllPhotos());
+        toast(`${photosToDelete.length} foto(s) removidas (${filterName}).`);
       },
     });
   });
@@ -266,8 +354,8 @@ async function handleFiles(fileList) {
       const totalAdded = normalPhotos.length + splitResults.totalQuadrants;
       toast(`${totalAdded} imagem(ns) adicionadas (${splitResults.splitCount} divididas em 2×2).`);
     } else {
-      renderGrid(await getAllPhotos());
-      toast(`${newPhotos.length} imagem(ns) adicionadas.`);
+    renderGrid(await getAllPhotos());
+    toast(`${newPhotos.length} imagem(ns) adicionadas.`);
     }
   } catch (err) {
     console.error(err);
@@ -404,9 +492,9 @@ async function handleRevert(croppedPhoto) {
             // Salvar alterações
             await savePhotos([...photosToDelete, restoredOriginal]);
             
-            // Re-renderizar grid
+            // Re-renderizar grid mantendo foco na foto restaurada
             const updatedPhotos = await getAllPhotos();
-            renderGrid(updatedPhotos);
+            renderGrid(updatedPhotos, restoredOriginal.id);
             
             toast(`Foto original restaurada. ${siblings.length} cortes removidos.`);
             resolve(true);
@@ -439,9 +527,6 @@ async function handleManualSplit(photo) {
       return null;
     }
     
-    // Carregar imagem completa
-    const img = await loadImageFromURL(imageSource);
-    
     // Abrir cropper e aguardar resultado (sem sugerir regiões - divisão manual)
     const quadrants = await openCropper(imageSource);
     
@@ -468,8 +553,8 @@ async function handleManualSplit(photo) {
     // Salvar tudo: original atualizada + 4 novas
     await savePhotos([updatedOriginal, ...newPhotos]);
     
-    // Re-renderizar grid
-    renderGrid(await getAllPhotos());
+    // Re-renderizar grid mantendo foco na primeira foto cortada
+    renderGrid(await getAllPhotos(), newPhotos[0].id);
     
     toast(`Foto dividida manualmente em 4 quadrantes.`);
     
@@ -540,31 +625,7 @@ async function processCropQueue(candidates) {
   return { splitCount, totalQuadrants };
 }
 
-/**
- * Converte Blob para DataURL
- */
-function blobToDataURL(blob) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result);
-    reader.onerror = reject;
-    reader.readAsDataURL(blob);
-  });
-}
-
-/**
- * Carrega Image a partir de URL
- */
-function loadImageFromURL(url) {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => resolve(img);
-    img.onerror = reject;
-    img.src = url;
-  });
-}
-
-// helpers de progresso (adicione no arquivo)
+// Helpers de progresso
 function showProgress(show) {
   const el = document.getElementById("progress");
   el?.setAttribute("aria-hidden", show ? "false" : "true");
@@ -580,18 +641,42 @@ function updateProgress(text, pct) {
 let selectionMode = false;
 let selectedIds = new Set();
 
-function renderGrid(photos) {
+function renderGrid(photos, keepFocusOnPhotoId = null) {
+  // Salvar posição atual do scroll ANTES de qualquer modificação
+  const savedScrollTop = window.pageYOffset || document.documentElement.scrollTop;
+  
+  // Atualizar cache global
+  allPhotos = photos;
+  
   // Sprint 2: Filtrar fotos divididas (originais com _isSplit)
-  const visiblePhotos = photos.filter(p => !p._isSplit);
+  let visiblePhotos = photos.filter(p => !p._isSplit);
+  
+  // Sprint 3: Aplicar ordenação ativa
+  const sortFn = SORT_OPTIONS[currentSort]?.fn || SORT_OPTIONS['date-desc'].fn;
+  visiblePhotos.sort(sortFn);
+  
+  // Sprint 3: Aplicar filtro ativo
+  const filteredPhotos = applyCurrentFilter(visiblePhotos);
+  
+  // Toast se filtro vazio (mas há fotos no total)
+  if (filteredPhotos.length === 0 && visiblePhotos.length > 0) {
+    if (currentFilter === 'rated5') {
+      toast('Nenhuma foto com 5 estrelas ainda.');
+    } else if (currentFilter === 'unrated') {
+      toast('Todas as fotos já foram avaliadas!');
+    }
+  }
   
   const grid = $("#grid");
   grid.innerHTML = "";
-  $("#countInfo").textContent = `${visiblePhotos.length} imagens`;
+  $("#countInfo").textContent = `${filteredPhotos.length} imagens`;
 
   // habilita ou desabilita o botão "Limpar" conforme existência de fotos
   const clearBtn = $("#clearAll");
-  if (clearBtn) clearBtn.disabled = visiblePhotos.length === 0;
+  if (clearBtn) clearBtn.disabled = filteredPhotos.length === 0;
 
+  visiblePhotos = filteredPhotos; // Usar lista filtrada
+  
   visiblePhotos.forEach((p, idx) => {
     const badges = [];
     // Badge "Cortado" para fotos geradas por divisão 2×2
@@ -608,6 +693,8 @@ function renderGrid(photos) {
     card.className = "photo-card";
     card.dataset.id = p.id;
     card.tabIndex = 0;
+    // Sprint 3: Marcar se está avaliada para controlar opacidade das estrelas
+    if (p.rating > 0) card.dataset.rated = "true";
     if (selectedIds.has(p.id)) card.classList.add("selected");
     
     // Decidir botão de ação: Dividir ou Restaurar
@@ -641,6 +728,15 @@ function renderGrid(photos) {
       </div>
       <div class="photo-badges">${badges.join("")}</div>
     `;
+    
+    // Sprint 3: Adicionar estrelas de rating
+    const ratingContainer = document.createElement("div");
+    ratingContainer.className = "photo-rating";
+    const starRating = createStarRating(p.rating || 0, (newRating) => {
+      setPhotoRating(p.id, newRating);
+    });
+    ratingContainer.appendChild(starRating);
+    card.appendChild(ratingContainer);
 
     const mark = document.createElement("div");
     mark.className = "select-mark";
@@ -649,15 +745,15 @@ function renderGrid(photos) {
 
     // abrir viewer OU selecionar, conforme modo
     card.addEventListener("click", (ev) => {
-      // Ignorar cliques em botões de ação
-      if (ev.target.closest(".icon-btn")) return;
+      // Ignorar cliques em botões de ação e estrelas
+      if (ev.target.closest(".icon-btn") || ev.target.closest(".star-rating")) return;
 
       if (selectionMode) {
         // toggle seleção
         toggleSelect(p.id, ev);
       } else {
-        // ação primária: abrir viewer
-        openViewer(idx);
+        // ação primária: abrir viewer usando o ID da foto (não o índice)
+        openViewerByPhotoId(p.id);
       }
     });
 
@@ -665,7 +761,7 @@ function renderGrid(photos) {
       if (ev.key === "Enter" || ev.key === " ") {
         ev.preventDefault();
         if (selectionMode) toggleSelect(p.id, ev);
-        else openViewer(idx);
+        else openViewerByPhotoId(p.id);
       }
     });
 
@@ -710,8 +806,43 @@ function renderGrid(photos) {
     if (selectedIds.has(p.id)) card.classList.add("selected");
   });
 
-  const first = !selectionMode && grid.querySelector(".photo-card");
-  if (first) setTimeout(() => first.focus(), 0);
+  // Restaurar scroll e foco após renderização
+  requestAnimationFrame(() => {
+    if (keepFocusOnPhotoId) {
+      // Manter foco na foto específica
+      const targetCard = document.querySelector(`.photo-card[data-id="${keepFocusOnPhotoId}"]`);
+      if (targetCard) {
+        // Calcular posição antes de scrollar
+        const rect = targetCard.getBoundingClientRect();
+        const currentScrollTop = window.pageYOffset || document.documentElement.scrollTop;
+        const targetPosition = rect.top + currentScrollTop - 100; // 100px de offset do topo
+        
+        // Scroll até a posição
+        window.scrollTo({
+          top: Math.max(0, targetPosition),
+          behavior: 'auto'
+        });
+        
+        // Opcional: fazer o card piscar brevemente para indicar onde está
+        targetCard.style.transition = 'box-shadow 0.3s ease';
+        targetCard.style.boxShadow = '0 0 0 3px rgba(106, 163, 255, 0.6)';
+        setTimeout(() => {
+          targetCard.style.boxShadow = '';
+        }, 600);
+      }
+    } else {
+      // Restaurar scroll original
+      window.scrollTo(0, savedScrollTop);
+      
+      // Focar primeiro card se não estiver em modo seleção
+      const first = !selectionMode && grid.querySelector(".photo-card");
+      if (first && savedScrollTop === 0) {
+        // Apenas focar se estava no topo (comportamento original)
+        first.focus();
+      }
+    }
+  });
+  
   updateMultiBar();
 }
 
@@ -752,7 +883,10 @@ async function removeSelected() {
   // limpa seleção e sai do modo
   selectedIds.clear();
   toggleSelectionMode(false); // ⬅️ sai do modo e ajusta UI (labels/botões)
-  renderGrid(await getAllPhotos()); // re-render atualiza contador (countInfo)
+  
+  // Re-renderizar mantendo scroll (sem keepFocusOnPhotoId, usa savedScrollTop)
+  renderGrid(await getAllPhotos());
+  
   toast(`${toDelete.length} imagem(ns) removida(s).`);
 }
 
@@ -781,10 +915,48 @@ function toast(msg) {
 let currentIndex = -1;
 let currentList = [];
 
+/**
+ * Abre viewer pelo ID da foto (mais confiável que usar índice)
+ */
+async function openViewerByPhotoId(photoId) {
+  const allPhotos = await getAllPhotos();
+  // Sprint 3: Aplicar mesma ordenação e filtro do grid
+  let visiblePhotos = allPhotos.filter(p => !p._isSplit);
+  const sortFn = SORT_OPTIONS[currentSort]?.fn || SORT_OPTIONS['date-desc'].fn;
+  visiblePhotos.sort(sortFn);
+  currentList = applyCurrentFilter(visiblePhotos);
+  
+  if (!currentList.length) return;
+  
+  // Encontrar índice da foto pelo ID
+  const index = currentList.findIndex(p => p.id === photoId);
+  if (index < 0) return; // Foto não encontrada na lista filtrada
+  
+  currentIndex = index;
+  const v = document.getElementById("viewer");
+  const img = document.getElementById("viewerImg");
+  img.src = currentList[currentIndex].thumb;
+  v.setAttribute("aria-hidden", "false");
+  // teclas
+  document.addEventListener("keydown", viewerKeys);
+  // resetar zoom ao abrir/trocar imagem
+  resetZoom();
+  // atualizar botão dividir/restaurar
+  updateViewerSplitButton();
+  // Sprint 3: Atualizar estrelas de rating
+  updateViewerRating();
+}
+
+/**
+ * Abre viewer pelo índice (mantido para compatibilidade)
+ */
 async function openViewer(index) {
   const allPhotos = await getAllPhotos();
-  // Filtrar fotos divididas (originais marcadas com _isSplit)
-  currentList = allPhotos.filter(p => !p._isSplit);
+  // Sprint 3: Aplicar mesma ordenação e filtro do grid
+  let visiblePhotos = allPhotos.filter(p => !p._isSplit);
+  const sortFn = SORT_OPTIONS[currentSort]?.fn || SORT_OPTIONS['date-desc'].fn;
+  visiblePhotos.sort(sortFn);
+  currentList = applyCurrentFilter(visiblePhotos);
   
   if (!currentList.length) return;
   currentIndex = Math.max(0, Math.min(index, currentList.length - 1));
@@ -798,6 +970,8 @@ async function openViewer(index) {
   resetZoom();
   // atualizar botão dividir/restaurar
   updateViewerSplitButton();
+  // Sprint 3: Atualizar estrelas de rating
+  updateViewerRating();
 }
 
 function updateViewerSplitButton() {
@@ -837,6 +1011,33 @@ function closeViewer() {
   const v = document.getElementById("viewer");
   v.setAttribute("aria-hidden", "true");
   document.removeEventListener("keydown", viewerKeys);
+  
+  // Sprint 3: Ao fechar viewer, fazer scroll até a última foto visualizada
+  if (currentIndex >= 0 && currentList[currentIndex]) {
+    const lastViewedPhotoId = currentList[currentIndex].id;
+    
+    // Fazer scroll até a foto no grid
+    setTimeout(() => {
+      const targetCard = document.querySelector(`.photo-card[data-id="${lastViewedPhotoId}"]`);
+      if (targetCard) {
+        const rect = targetCard.getBoundingClientRect();
+        const currentScrollTop = window.pageYOffset || document.documentElement.scrollTop;
+        const targetPosition = rect.top + currentScrollTop - 100;
+        
+        window.scrollTo({
+          top: Math.max(0, targetPosition),
+          behavior: 'smooth'
+        });
+        
+        // Destaque visual
+        targetCard.style.transition = 'box-shadow 0.3s ease';
+        targetCard.style.boxShadow = '0 0 0 3px rgba(106, 163, 255, 0.6)';
+        setTimeout(() => {
+          targetCard.style.boxShadow = '';
+        }, 600);
+      }
+    }, 100);
+  }
 }
 function viewerPrev() {
   if (currentIndex > 0) {
@@ -864,7 +1065,15 @@ function viewerKeys(e) {
     e.preventDefault();
     onViewerDelete();
   }
-  // Atalhos de zoom
+  // Sprint 3: Atalhos de rating no viewer (1-5 para avaliar, 0 para remover)
+  if (e.key >= '1' && e.key <= '5') {
+    e.preventDefault();
+    const rating = parseInt(e.key, 10);
+    if (currentIndex >= 0 && currentList[currentIndex]) {
+      setPhotoRating(currentList[currentIndex].id, rating, false); // NÃO scroll - closeViewer já faz
+    }
+  }
+  // Atalhos de zoom (0 só reseta zoom se não houver rating ativo - já tratado acima)
   if (e.key === "+" || e.key === "=") {
     e.preventDefault();
     zoomBy(ZOOM_STEP);
@@ -873,7 +1082,8 @@ function viewerKeys(e) {
     e.preventDefault();
     zoomBy(-ZOOM_STEP);
   }
-  if (e.key === "0") {
+  // 0 agora conflita com rating - manter apenas para resetar zoom quando shift pressionado
+  if (e.key === "0" && e.shiftKey) {
     e.preventDefault();
     resetZoom();
   }
@@ -939,16 +1149,8 @@ async function onViewerSplit() {
     const reverted = await handleRevert(photo);
     
     if (reverted) {
-      // Foto foi revertida: abrir a original no viewer
-      const allPhotos = await getAllPhotos();
-      const visiblePhotos = allPhotos.filter(p => !p._isSplit);
-      const originalIndex = visiblePhotos.findIndex(p => p.id === photo._parentId);
-      
-      if (originalIndex >= 0) {
-        openViewer(originalIndex);
-      } else {
-        closeViewer();
-      }
+      // Foto foi revertida: abrir a original no viewer usando ID
+      openViewerByPhotoId(photo._parentId);
     }
   } else {
     // Dividir: cortar em 2×2
@@ -956,17 +1158,8 @@ async function onViewerSplit() {
     
     // Atualizar viewer apenas se confirmou
     if (newPhotos && newPhotos.length > 0) {
-      const allPhotos = await getAllPhotos();
-      const visiblePhotos = allPhotos.filter(p => !p._isSplit);
-      const newIndex = visiblePhotos.findIndex(p => p.id === newPhotos[0].id);
-      
-      if (newIndex >= 0) {
-        currentList = visiblePhotos;
-        currentIndex = newIndex;
-        const img = document.getElementById("viewerImg");
-        img.src = currentList[currentIndex].thumb;
-        updateViewerSplitButton();
-      }
+      // Abrir primeira foto cortada usando ID
+      openViewerByPhotoId(newPhotos[0].id);
     }
   }
 }
@@ -977,29 +1170,38 @@ async function deleteCurrentAndAdvance() {
     const victim = currentList[currentIndex];
     await savePhotos([{ ...victim, _delete: true }]);
 
-    // 2) recarrega lista global e re-renderiza grid
+    // 2) recarrega lista global
     const allPhotos = await getAllPhotos();
-    renderGrid(allPhotos);
+    
+    // Filtrar e aplicar ordenação/filtro
+    let visiblePhotos = allPhotos.filter(p => !p._isSplit);
+    const sortFn = SORT_OPTIONS[currentSort]?.fn || SORT_OPTIONS['date-desc'].fn;
+    visiblePhotos.sort(sortFn);
+    const filteredPhotos = applyCurrentFilter(visiblePhotos);
 
-    // Filtrar fotos divididas para o viewer
-    const visiblePhotos = allPhotos.filter(p => !p._isSplit);
-
-    if (!visiblePhotos.length) {
-      // nada restou: fecha viewer
+    if (!filteredPhotos.length) {
+      // nada restou: fecha viewer e re-renderiza grid
+      renderGrid(allPhotos);
       toast("Imagem removida.");
       closeViewer();
       return;
     }
 
     // 3) recalcula índice seguro
-    // mapeia para achar o mesmo id (pode ter saído), então usa clamp
-    const newIndex = Math.min(currentIndex, visiblePhotos.length - 1);
-    currentList = visiblePhotos;
+    const newIndex = Math.min(currentIndex, filteredPhotos.length - 1);
+    currentList = filteredPhotos;
     currentIndex = newIndex;
 
     // 4) atualiza imagem exibida
     const img = document.getElementById("viewerImg");
     img.src = currentList[currentIndex].thumb;
+    
+    // 5) re-renderiza grid mantendo foco na próxima foto
+    renderGrid(allPhotos, currentList[currentIndex].id);
+    
+    // Atualizar botão split e rating
+    updateViewerSplitButton();
+    updateViewerRating();
 
     toast("Imagem removida.");
   } catch (e) {
@@ -1315,3 +1517,438 @@ function getTouchDistance(touches) {
 
 // Inicializar zoom quando o documento carregar
 document.addEventListener('DOMContentLoaded', initViewerZoom);
+
+// ========================================
+//  SPRINT 3: RATING E FILTROS
+// ========================================
+
+/**
+ * Define rating de uma foto e persiste no IndexedDB
+ * @param {string} photoId - ID da foto
+ * @param {number} rating - Rating (0-5, onde 0 = remover avaliação)
+ * @param {boolean} scrollToPhoto - Se true, faz scroll até a foto (padrão: false)
+ */
+async function setPhotoRating(photoId, rating, scrollToPhoto = false) {
+  try {
+    const photos = await getAllPhotos();
+    const photo = photos.find(p => p.id === photoId);
+    
+    if (!photo) {
+      console.error('Foto não encontrada:', photoId);
+      return;
+    }
+    
+    // Atualizar rating e timestamp
+    photo.rating = rating;
+    photo.evaluatedAt = rating > 0 ? Date.now() : undefined;
+    
+    // Salvar no IndexedDB
+    await savePhotos([photo]);
+    
+    // Atualizar cache global
+    allPhotos = await getAllPhotos();
+    
+    // Atualizar currentList também (para sincronizar viewer)
+    if (currentList && currentList.length > 0) {
+      const photoInList = currentList.find(p => p.id === photoId);
+      if (photoInList) {
+        photoInList.rating = rating;
+        photoInList.evaluatedAt = photo.evaluatedAt;
+      }
+    }
+    
+    // Re-renderizar grid
+    // Se scrollToPhoto=true: faz scroll até a foto (usado quando vem do viewer)
+    // Se scrollToPhoto=false: mantém scroll atual (usado quando vem das miniaturas)
+    renderGrid(allPhotos, scrollToPhoto ? photoId : null);
+    
+    // Atualizar contadores dos filtros
+    updateFilterCounts();
+    
+    // Toast de feedback
+    if (rating === 0) {
+      toast('Avaliação removida');
+    } else {
+      toast(`Avaliada com ${rating} estrela${rating > 1 ? 's' : ''}!`);
+    }
+    
+    // Atualizar viewer se estiver aberto (mas NÃO re-renderizar, apenas atualizar estrelas)
+    if ($('#viewer')?.getAttribute('aria-hidden') === 'false') {
+      updateViewerRating();
+    }
+    
+    // Atualizar aba "Avaliar" se estiver ativa (mas NÃO re-renderizar - será feito no callback)
+    // O callback do createStarRating na aba "Avaliar" já lida com isso
+    
+  } catch (err) {
+    console.error('Erro ao salvar rating:', err);
+    toast('Erro ao salvar avaliação.');
+  }
+}
+
+/**
+ * Aplica filtro atual à lista de fotos
+ * @param {Array} photos - Lista de fotos
+ * @returns {Array} - Lista filtrada
+ */
+function applyCurrentFilter(photos) {
+  switch (currentFilter) {
+    case 'rated5':
+      return photos.filter(p => p.rating === 5);
+    case 'unrated':
+      return photos.filter(p => !p.rating || p.rating === 0);
+    case 'all':
+    default:
+      return photos;
+  }
+}
+
+/**
+ * Atualiza contadores dos filtros
+ */
+function updateFilterCounts() {
+  const photos = allPhotos.filter(p => !p._isSplit); // Apenas visíveis
+  
+  const counts = {
+    all: photos.length,
+    rated5: photos.filter(p => p.rating === 5).length,
+    unrated: photos.filter(p => !p.rating || p.rating === 0).length
+  };
+  
+  // Atualizar UI
+  $('#filterCountAll').textContent = counts.all;
+  $('#filterCountRated5').textContent = counts.rated5;
+  $('#filterCountUnrated').textContent = counts.unrated;
+}
+
+/**
+ * Inicializa event listeners dos filtros
+ */
+function initFilters() {
+  const filterTabs = document.querySelectorAll('.filter-tab');
+  
+  filterTabs.forEach(tab => {
+    tab.addEventListener('click', () => {
+      const filter = tab.dataset.filter;
+      
+      // Atualizar estado
+      currentFilter = filter;
+      
+      // Atualizar UI dos tabs
+      filterTabs.forEach(t => {
+        t.classList.toggle('active', t.dataset.filter === filter);
+        t.setAttribute('aria-selected', t.dataset.filter === filter ? 'true' : 'false');
+      });
+      
+      // Re-renderizar grid
+      renderGrid(allPhotos);
+    });
+  });
+  
+  // Ordenação
+  const sortSelect = $('#sortSelect');
+  if (sortSelect) {
+    sortSelect.addEventListener('change', (e) => {
+      currentSort = e.target.value;
+      
+      // Salvar preferência no localStorage
+      localStorage.setItem('photoranker-sort', currentSort);
+      
+      // Re-renderizar grid
+      renderGrid(allPhotos);
+    });
+  }
+}
+
+/**
+ * Atualiza select de ordenação com valor atual
+ */
+function updateSortSelect() {
+  const sortSelect = $('#sortSelect');
+  if (sortSelect) {
+    sortSelect.value = currentSort;
+  }
+}
+
+// ========================================
+//  SPRINT 3: ABA "AVALIAR"
+// ========================================
+
+/**
+ * Inicializa aba "Avaliar"
+ */
+function initRateView() {
+  // Será renderizada dinamicamente quando aba for aberta
+  // Observar mudança de hash para detectar abertura
+  window.addEventListener('hashchange', () => {
+    if (location.hash === '#/rate') {
+      renderRateView();
+    }
+  });
+  
+  // Se já estiver na aba ao carregar
+  if (location.hash === '#/rate') {
+    setTimeout(() => renderRateView(), 100);
+  }
+}
+
+/**
+ * Renderiza interface da aba "Avaliar"
+ */
+async function renderRateView() {
+  const container = $('#rateView');
+  if (!container) return;
+  
+  // Carregar fotos atualizadas
+  allPhotos = await getAllPhotos();
+  let allVisiblePhotos = allPhotos.filter(p => !p._isSplit); // Todas visíveis
+  
+  // Aplicar ordenação ativa
+  const sortFn = SORT_OPTIONS[currentSort]?.fn || SORT_OPTIONS['date-desc'].fn;
+  allVisiblePhotos.sort(sortFn);
+  
+  // Guardar ID da foto atual (para manter foco ao alternar checkbox)
+  const currentPhotoId = rateViewPhotos[rateViewIndex]?.id;
+  
+  // Aplicar filtro "apenas não avaliadas" se ativo
+  rateViewPhotos = rateViewOnlyUnrated 
+    ? allVisiblePhotos.filter(p => !p.rating || p.rating === 0)
+    : allVisiblePhotos;
+  
+  // Estado vazio
+  if (rateViewPhotos.length === 0) {
+    container.innerHTML = `
+      <div class="rate-empty">
+        <div class="rate-empty-icon">🎉</div>
+        <h3>${rateViewOnlyUnrated ? 'Todas as fotos já foram avaliadas!' : 'Nenhuma foto para avaliar'}</h3>
+        <p>${rateViewOnlyUnrated ? 'Você concluiu a avaliação de todas as fotos.' : 'Faça upload de fotos primeiro para começar a avaliar.'}</p>
+        <button class="btn" onclick="location.hash = '#/upload'">
+          ${rateViewOnlyUnrated ? 'Ver todas as fotos' : 'Ir para Upload'}
+        </button>
+      </div>
+    `;
+    return;
+  }
+  
+  // Tentar manter foco na mesma foto ao alternar checkbox
+  if (currentPhotoId) {
+    const newIndex = rateViewPhotos.findIndex(p => p.id === currentPhotoId);
+    if (newIndex >= 0) {
+      rateViewIndex = newIndex;
+    } else {
+      // Foto atual não está mais na lista filtrada, ir para próxima disponível
+      rateViewIndex = Math.min(rateViewIndex, rateViewPhotos.length - 1);
+    }
+  }
+  
+  // Garantir índice válido
+  if (rateViewIndex < 0) rateViewIndex = 0;
+  if (rateViewIndex >= rateViewPhotos.length) rateViewIndex = rateViewPhotos.length - 1;
+  
+  const currentPhoto = rateViewPhotos[rateViewIndex];
+  const totalPhotos = allVisiblePhotos.length; // Total geral (não filtrado)
+  const ratedCount = allVisiblePhotos.filter(p => p.rating > 0).length; // Total avaliadas (geral)
+  const currentPosition = rateViewIndex + 1;
+  const listSize = rateViewPhotos.length;
+  
+  // Renderizar interface
+  container.innerHTML = `
+    <div class="rate-container">
+      <div class="rate-progress">
+        ${rateViewOnlyUnrated 
+          ? `Não avaliada <span class="current">${currentPosition}</span> de ${listSize} • Total: ${totalPhotos} fotos (<span class="current">${ratedCount}</span> avaliadas)`
+          : `Foto <span class="current">${currentPosition}</span> de ${totalPhotos} (<span class="current">${ratedCount}</span> avaliadas)`
+        }
+      </div>
+      
+      <div class="rate-image-wrapper">
+        <img src="${currentPhoto.thumb}" alt="Foto para avaliar" id="rateImage">
+      </div>
+      
+      <div class="rate-controls" id="rateControls"></div>
+      
+      <div class="rate-navigation">
+        <button class="btn btn-secondary rate-nav-btn" id="ratePrev" ${rateViewIndex === 0 ? 'disabled' : ''}>
+          ← Anterior
+        </button>
+        <button class="btn btn-secondary rate-nav-btn" id="rateNext" ${rateViewIndex === listSize - 1 ? 'disabled' : ''}>
+          Próxima →
+        </button>
+      </div>
+      
+      <div class="rate-options">
+        <label class="rate-option-checkbox">
+          <input type="checkbox" id="rateOnlyUnrated" ${rateViewOnlyUnrated ? 'checked' : ''}>
+          Mostrar apenas não avaliadas
+        </label>
+      </div>
+    </div>
+  `;
+  
+  // Adicionar estrelas
+  const controlsContainer = $('#rateControls');
+  const starRating = createStarRating(currentPhoto.rating || 0, async (newRating) => {
+    await setPhotoRating(currentPhoto.id, newRating);
+    
+    // Delay de 300ms antes de avançar automaticamente (para dar tempo do feedback visual)
+    await new Promise(resolve => setTimeout(resolve, 300));
+    
+    // Se marcou "apenas não avaliadas" e avaliou a foto, avançar automaticamente
+    if (rateViewOnlyUnrated && newRating > 0) {
+      if (rateViewIndex < rateViewPhotos.length - 1) {
+        rateViewIndex++;
+        renderRateView();
+      } else {
+        // Era a última, re-renderizar para mostrar estado vazio
+        renderRateView();
+      }
+    }
+  });
+  controlsContainer.appendChild(starRating);
+  
+  // Event listeners de navegação
+  $('#ratePrev')?.addEventListener('click', () => {
+    if (rateViewIndex > 0) {
+      rateViewIndex--;
+      renderRateView();
+    }
+  });
+  
+  $('#rateNext')?.addEventListener('click', () => {
+    if (rateViewIndex < listSize - 1) {
+      rateViewIndex++;
+      renderRateView();
+    }
+  });
+  
+  $('#rateOnlyUnrated')?.addEventListener('change', (e) => {
+    rateViewOnlyUnrated = e.target.checked;
+    // Não resetar índice - será ajustado no próximo render
+    renderRateView();
+  });
+  
+  // Atalhos de teclado (←/→, 1-5, 0, Esc)
+  document.addEventListener('keydown', handleRateViewKeys);
+}
+
+/**
+ * Handler de atalhos de teclado na aba "Avaliar"
+ */
+function handleRateViewKeys(e) {
+  // Apenas se estiver na aba "Avaliar"
+  if (location.hash !== '#/rate') return;
+  
+  const tag = (e.target && e.target.tagName) || "";
+  const typing = ["INPUT", "TEXTAREA", "SELECT"].includes(tag);
+  if (typing) return;
+  
+  // Navegação ←/→
+  if (e.key === 'ArrowLeft') {
+    e.preventDefault();
+    $('#ratePrev')?.click();
+  }
+  if (e.key === 'ArrowRight') {
+    e.preventDefault();
+    $('#rateNext')?.click();
+  }
+  
+  // Rating 1-5 - simular click na estrela correspondente
+  if (e.key >= '1' && e.key <= '5') {
+    e.preventDefault();
+    const rating = parseInt(e.key, 10);
+    const starRatingContainer = $('#rateControls .star-rating');
+    if (starRatingContainer) {
+      const targetStar = starRatingContainer.querySelector(`.star[data-value="${rating}"]`);
+      if (targetStar) {
+        targetStar.click(); // Dispara o callback do createStarRating
+      }
+    }
+  }
+  
+  // Remover rating (0) - simular click na 1ª estrela com rating 0
+  if (e.key === '0') {
+    e.preventDefault();
+    const currentPhoto = rateViewPhotos[rateViewIndex];
+    if (currentPhoto) {
+      // Atualizar rating para 0
+      rateCurrentPhoto(0);
+    }
+  }
+  
+  // Voltar para Upload (Esc)
+  if (e.key === 'Escape') {
+    e.preventDefault();
+    location.hash = '#/upload';
+  }
+}
+
+/**
+ * Avalia foto atual na aba "Avaliar" (usado por atalhos de teclado)
+ */
+async function rateCurrentPhoto(rating) {
+  if (!rateViewPhotos[rateViewIndex]) return;
+  
+  const currentPhoto = rateViewPhotos[rateViewIndex];
+  
+  // Atualizar rating
+  await setPhotoRating(currentPhoto.id, rating);
+  
+  // Atualizar estrelas visualmente
+  const starRatingContainer = $('#rateControls .star-rating');
+  if (starRatingContainer) {
+    updateStarRating(starRatingContainer, rating);
+  }
+  
+  // Delay de 300ms antes de avançar automaticamente
+  await new Promise(resolve => setTimeout(resolve, 300));
+  
+  // Se marcou "apenas não avaliadas" e avaliou a foto, avançar automaticamente
+  if (rateViewOnlyUnrated && rating > 0) {
+    // Recarregar lista (foto avaliada sai do filtro)
+    const allPhotos = await getAllPhotos();
+    let allVisiblePhotos = allPhotos.filter(p => !p._isSplit);
+    
+    // Aplicar ordenação
+    const sortFn = SORT_OPTIONS[currentSort]?.fn || SORT_OPTIONS['date-desc'].fn;
+    allVisiblePhotos.sort(sortFn);
+    
+    rateViewPhotos = allVisiblePhotos.filter(p => !p.rating || p.rating === 0);
+    
+    if (rateViewPhotos.length === 0) {
+      // Todas avaliadas
+      renderRateView();
+    } else {
+      // Manter no mesmo índice (ou ajustar se necessário)
+      if (rateViewIndex >= rateViewPhotos.length) {
+        rateViewIndex = rateViewPhotos.length - 1;
+      }
+      renderRateView();
+    }
+  }
+}
+
+// ========================================
+//  SPRINT 3: RATING NO VIEWER
+// ========================================
+
+/**
+ * Atualiza estrelas de rating no viewer fullscreen
+ */
+function updateViewerRating() {
+  if (currentIndex < 0 || !currentList.length) return;
+  
+  const photo = currentList[currentIndex];
+  const ratingContainer = $('#viewerRating');
+  
+  if (!ratingContainer) return;
+  
+  // Limpar container
+  ratingContainer.innerHTML = '';
+  
+  // Criar estrelas - scrollToPhoto = false, closeViewer já faz o scroll
+  const starRating = createStarRating(photo.rating || 0, (newRating) => {
+    setPhotoRating(photo.id, newRating, false);
+  });
+  
+  ratingContainer.appendChild(starRating);
+}
