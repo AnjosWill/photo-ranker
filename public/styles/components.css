@@ -1035,6 +1035,196 @@ body.selection-mode .split-btn {
 }
 
 /* ===============================
+   Contest Mode (Sprint 4)
+   =============================== */
+
+.contest-view {
+  min-height: 70vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--gap-4);
+}
+
+/* Estado vazio/inicial */
+.contest-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--gap-3);
+  text-align: center;
+  max-width: 600px;
+  padding: var(--gap-4);
+}
+
+.contest-empty-icon {
+  font-size: 72px;
+  opacity: 0.3;
+  animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { transform: scale(1); opacity: 0.3; }
+  50% { transform: scale(1.05); opacity: 0.5; }
+}
+
+.contest-empty h3 {
+  margin: 0;
+  font-size: 28px;
+  color: var(--fg);
+  background: linear-gradient(135deg, var(--brand), var(--brand-2));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.contest-empty p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 16px;
+}
+
+.contest-stats {
+  display: flex;
+  gap: var(--gap-3);
+  margin: var(--gap-2) 0;
+}
+
+.contest-stat {
+  background: rgba(255, 255, 255, 0.05);
+  padding: 12px 20px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.contest-stat strong {
+  display: block;
+  font-size: 32px;
+  color: var(--brand);
+  font-weight: 700;
+}
+
+/* Layout de batalha (será usado em F4.3) */
+.contest-battle {
+  width: 100%;
+  max-width: 1600px;
+  margin: 0 auto;
+  padding: var(--gap-4);
+}
+
+.contest-progress {
+  text-align: center;
+  font-size: 16px;
+  color: var(--muted);
+  margin-bottom: var(--gap-4);
+}
+
+.contest-progress .current {
+  color: var(--brand);
+  font-weight: 600;
+  font-size: 20px;
+}
+
+.battle-container {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  gap: var(--gap-4);
+  align-items: center;
+}
+
+.battle-photo {
+  position: relative;
+  background: #000;
+  border-radius: 16px;
+  overflow: hidden;
+  cursor: pointer;
+  transition: all 0.25s ease;
+  border: 3px solid transparent;
+  max-height: 600px;
+}
+
+.battle-photo:hover {
+  transform: scale(1.02);
+  border-color: var(--brand);
+  box-shadow: 0 8px 32px rgba(106, 163, 255, 0.4);
+}
+
+.battle-photo:active {
+  transform: scale(0.98);
+}
+
+.battle-photo img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+  max-height: 600px;
+}
+
+.battle-label {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  background: rgba(0, 0, 0, 0.8);
+  color: #fff;
+  font-size: 48px;
+  font-weight: 700;
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+}
+
+.battle-elo {
+  position: absolute;
+  bottom: 16px;
+  right: 16px;
+  background: rgba(0, 0, 0, 0.8);
+  backdrop-filter: blur(8px);
+  color: #fff;
+  padding: 8px 16px;
+  border-radius: 20px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.battle-vs {
+  font-size: 32px;
+  font-weight: 700;
+  color: var(--muted);
+  text-align: center;
+}
+
+.battle-actions {
+  margin-top: var(--gap-4);
+  display: flex;
+  justify-content: center;
+  gap: var(--gap-2);
+}
+
+/* Mobile: layout vertical */
+@media (max-width: 600px) {
+  .battle-container {
+    grid-template-columns: 1fr;
+    grid-template-rows: 1fr auto 1fr;
+  }
+  
+  .battle-vs {
+    transform: rotate(90deg);
+    font-size: 24px;
+  }
+  
+  .battle-label {
+    font-size: 36px;
+    width: 56px;
+    height: 56px;
+  }
+}
+
+/* ===============================
    Cropper Modal (Sprint 2)
    =============================== */
 

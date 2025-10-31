@@ -62,6 +62,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   initUpload();
   initFilters(); // Sprint 3
   initRateView(); // Sprint 3
+  initContestView(); // Sprint 4
   
   const selectBtn = document.getElementById("selectModeBtn");
   selectBtn?.addEventListener("click", () => toggleSelectionMode());
@@ -1689,6 +1690,78 @@ function initRateView() {
   // Se já estiver na aba ao carregar
   if (location.hash === '#/rate') {
     setTimeout(() => renderRateView(), 100);
+  }
+}
+
+// ========================================
+//  SPRINT 4: CONTEST MODE
+// ========================================
+
+/**
+ * Inicializa aba "Contest"
+ */
+function initContestView() {
+  // Renderizar quando aba for aberta
+  window.addEventListener('hashchange', () => {
+    if (location.hash === '#/contest') {
+      renderContestView();
+    }
+  });
+  
+  // Se já estiver na aba ao carregar
+  if (location.hash === '#/contest') {
+    setTimeout(() => renderContestView(), 100);
+  }
+}
+
+/**
+ * Renderiza aba "Contest"
+ */
+async function renderContestView() {
+  const container = $('#contestView');
+  if (!container) return;
+  
+  // Carregar fotos atualizadas
+  allPhotos = await getAllPhotos();
+  const visiblePhotos = allPhotos.filter(p => !p._isSplit);
+  
+  // Contar fotos qualificadas (rating = 5)
+  const qualifiedPhotos = visiblePhotos.filter(p => p.rating === 5);
+  const qualifiedCount = qualifiedPhotos.length;
+  
+  // Estado inicial (sem contest ativo)
+  // F4.3 implementará a lógica de batalha
+  container.innerHTML = `
+    <div class="contest-empty">
+      <div class="contest-empty-icon">🏆</div>
+      <h3>Contest Mode</h3>
+      <p>Compare fotos lado a lado e escolha a melhor!</p>
+      
+      <div class="contest-stats">
+        <div class="contest-stat">
+          <strong>${qualifiedCount}</strong>
+          <span>foto${qualifiedCount !== 1 ? 's' : ''} qualificada${qualifiedCount !== 1 ? 's' : ''} (⭐5)</span>
+        </div>
+      </div>
+      
+      <button id="startContest" class="btn" ${qualifiedCount < 2 ? 'disabled' : ''}>
+        Iniciar Contest
+      </button>
+      
+      <p class="muted">
+        ${qualifiedCount < 2 
+          ? 'Você precisa de pelo menos 2 fotos com ⭐5 para iniciar' 
+          : 'Clique para começar os confrontos'}
+      </p>
+    </div>
+  `;
+  
+  // Event listener para botão (será implementado em F4.3)
+  const startBtn = $('#startContest');
+  if (startBtn && !startBtn.disabled) {
+    startBtn.addEventListener('click', () => {
+      toast('Funcionalidade de batalha será implementada em F4.3!');
+    });
   }
 }
 
