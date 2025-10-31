@@ -68,6 +68,35 @@
             </div>
           </div>
 
+          <!-- Filtros (Sprint 3) -->
+          <div class="filters-bar">
+            <div class="filter-tabs" role="tablist" aria-label="Filtros de visualização">
+              <button class="filter-tab active" data-filter="all" role="tab" aria-selected="true">
+                Todas <span class="count" id="filterCountAll">0</span>
+              </button>
+              <button class="filter-tab" data-filter="rated5" role="tab" aria-selected="false">
+                ⭐ 5 estrelas <span class="count" id="filterCountRated5">0</span>
+              </button>
+              <button class="filter-tab" data-filter="unrated" role="tab" aria-selected="false">
+                Não avaliadas <span class="count" id="filterCountUnrated">0</span>
+              </button>
+            </div>
+            
+            <div class="sort-select-wrapper">
+              <label for="sortSelect" class="sort-label">Ordenar:</label>
+              <select id="sortSelect" class="sort-select" aria-label="Ordenação das fotos">
+                <option value="date-desc">📅 Data (mais recente)</option>
+                <option value="date-asc">📅 Data (mais antiga)</option>
+                <option value="rating-desc">⭐ Avaliação (maior)</option>
+                <option value="rating-asc">⭐ Avaliação (menor)</option>
+                <option value="size-desc">📦 Tamanho (maior)</option>
+                <option value="size-asc">📦 Tamanho (menor)</option>
+                <option value="dimension-desc">📏 Dimensão (maior)</option>
+                <option value="dimension-asc">📏 Dimensão (menor)</option>
+              </select>
+            </div>
+          </div>
+
           <div id="grid" class="grid grid-photos" aria-live="polite"></div>
         </div>
       </section>
@@ -75,11 +104,7 @@
       <!-- RATE -->
       <section data-route="rate" class="route" aria-labelledby="rate-title">
         <h2 id="rate-title" class="sr-only">Avaliar fotos</h2>
-        <div class="center">
-          <p class="muted">
-            Em breve: fluxo de estrelas 1–5 com atalhos 1..5 e progresso.
-          </p>
-        </div>
+        <div id="rateView" class="rate-view"></div>
       </section>
 
       <!-- CONTEST -->
@@ -125,10 +150,13 @@
       <button class="viewer-prev" aria-label="Anterior">&#10094;</button>
       
       <div class="viewer-image-container" id="viewerImgContainer">
-        <img id="viewerImg" alt="Visualização da foto" />
+      <img id="viewerImg" alt="Visualização da foto" />
       </div>
       
       <button class="viewer-next" aria-label="Próxima">&#10095;</button>
+      
+      <!-- Rating (Sprint 3) -->
+      <div class="viewer-rating" id="viewerRating" aria-label="Avaliação da foto"></div>
       
       <!-- Controles de Zoom -->
       <div class="viewer-zoom-controls">

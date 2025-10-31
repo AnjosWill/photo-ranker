@@ -55,31 +55,53 @@ photo-ranker/
 
 ---
 
-## 🚀 4. Status Atual (Sprint 1 concluída — `v0.1.0`)
+## 🚀 4. Status Atual (Sprint 3 concluída — `v0.3.0`)
 
 ### ✅ Funcionalidades já implementadas
-- Upload múltiplo de imagens (input ou arrastar);
-- **Progresso global** de upload (por quantidade, não bytes);
-- Persistência via IndexedDB;
-- Grid responsivo (2–4 colunas);
-- Viewer fullscreen com navegação (← → Esc);
-- Remoção com modal de confirmação;
-- Modo **selecionar múltiplas** imagens com barra de ações;
-- Botão **Limpar inteligente**:
-  - com seleção → remove apenas selecionadas;
-  - sem seleção → abre modal de confirmação;
-- Microinterações (hover, toasts, foco visível);
-- Acessibilidade: atalhos (`U`, `S`, `Del`, `Esc`).
+
+**Sprint 1 (v0.1.0):**
+- Upload múltiplo de imagens (input ou arrastar)
+- Progresso global de upload (por quantidade, não bytes)
+- Persistência via IndexedDB
+- Grid responsivo (1-4 colunas conforme tela)
+- Viewer fullscreen com navegação (← → Esc)
+- Remoção com modal de confirmação
+- Modo selecionar múltiplas imagens com barra de ações
+- Microinterações (hover, toasts, foco visível)
+- Acessibilidade: atalhos (U, S, Del, Esc)
+
+**Sprint 2 (v0.2.0):**
+- Detecção automática de fotos 2×2 via Web Worker
+- Modal cropper interativo com guias ajustáveis
+- Sistema de reverter fotos cortadas
+- Zoom até 4x e pan no viewer fullscreen
+- Badges visuais (Cortado, Novo)
+- Divisão manual para fotos não detectadas
+
+**Sprint 3 (v0.3.0):**
+- Sistema completo de avaliação por estrelas (1-5)
+- Aba "Avaliar" funcional com navegação sequencial
+- Filtros: Todas / ⭐5 / Não avaliadas
+- Sistema de ordenação: 8 opções (data, rating, tamanho, dimensão)
+- Atalhos de teclado para rating (1-5, 0)
+- Botão "Limpar" contextual (respeita filtro ativo)
+- Manutenção de scroll e foco inteligente
+- Grid adaptativo (1 coluna em telas < 400px)
 
 ### 🧩 Arquivos principais
-- `app.js` → lógica e integração UI ↔ DB.
-- `components.css` → estilos e microinterações.
-- `base.css` → layout, tokens e responsividade.
-- `index.html` → estrutura principal e containers de modais.
+- `app.js` → lógica principal, routing, upload, viewer, rating
+- `rating.js` → componente de estrelas (Sprint 3)
+- `cropper.js` → modal de corte 2×2 (Sprint 2)
+- `quad-worker.js` → detecção automática 2×2 (Sprint 2)
+- `db.js` → persistência IndexedDB
+- `image-utils.js` → processamento de imagens
+- `components.css` → estilos e microinterações
+- `base.css` → layout, tokens e responsividade
+- `index.html` → estrutura principal e containers de modais
 
 ---
 
-## 🔧 5. Sprint 2 — Detecção 2×2 e Cropper Manual (em andamento)
+## 🔧 5. Sprint 2 — Detecção 2×2 e Cropper Manual — ✅ **CONCLUÍDA (v0.2.0)**
 
 ### 🎯 Objetivo
 Permitir detectar automaticamente e cortar manualmente fotos compostas (4 rostos em uma imagem).
@@ -102,16 +124,20 @@ Permitir detectar automaticamente e cortar manualmente fotos compostas (4 rostos
 
 ---
 
-## ⭐ 6. Sprint 3 — Sistema de Avaliação (⭐ 1–5)
+## ⭐ 6. Sprint 3 — Sistema de Avaliação (⭐ 1–5) — ✅ **CONCLUÍDA (v0.3.0)**
 
 ### 🎯 Objetivo
 Adicionar o sistema de notas e filtros de visualização.
 
-### 📦 Entregas previstas
-- Interface de avaliação por estrelas no grid e viewer;
-- Persistência da nota (`rating`) no IndexedDB;
-- Filtros rápidos (“Todas”, “⭐5”, “Não avaliadas”);
-- Microinterações e foco de acessibilidade (`role="radiogroup"`).
+### 📦 Entregas (100% Completas)
+- ✅ Interface de avaliação por estrelas no grid, viewer e aba "Avaliar"
+- ✅ Persistência da nota (`rating`) no IndexedDB com índice otimizado
+- ✅ Filtros rápidos ("Todas", "⭐5", "Não avaliadas") com contadores dinâmicos
+- ✅ Microinterações e foco de acessibilidade (`role="radiogroup"`, ARIA completo)
+- ✅ Atalhos de teclado (1-5 avaliar, 0 remover, ←/→ navegar)
+- ✅ Aba "Avaliar" funcional com navegação sequencial
+- ✅ Feedback visual (toasts, animações, vibração mobile)
+- ✅ Documentação completa (SPRINT3_PLAN.md, SPRINT3_TESTS.md)
 
 ---
 

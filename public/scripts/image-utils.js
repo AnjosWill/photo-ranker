@@ -92,7 +92,15 @@ async function fileToThumb(file, progressCb) {
   progressCb?.(95);
   // encode webp (rápido, vamos a 100%)
   progressCb?.(100);
-  return { id: uuid(), thumb, w, h, rating: 0, parentId: null };
+  return { 
+    id: uuid(), 
+    thumb, 
+    w, 
+    h, 
+    rating: 0,  // Sprint 3: Todas as fotos começam sem avaliação
+    uploadedAt: Date.now(),
+    parentId: null 
+  };
 }
 
 function fileToDataURL(file, onprogress) {

@@ -50,7 +50,7 @@ body {
 /* Header/Footer */
 .app-header,
 .app-footer {
-  padding: var(--gap-3);
+  padding: var(--gap-2); /* Reduzido de gap-3 para gap-2 */
   background: var(--bg-elev);
   position: sticky;
   top: 0;

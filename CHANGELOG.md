@@ -1,6 +1,153 @@
 # Changelog
 Este projeto segue o formato **Keep a Changelog** e **SemVer**.
 
+## [v0.3.0] — 2025-10-31 (Sprint 3)
+### ✨ Funcionalidades
+**Sistema de Avaliação por Estrelas (1-5):**
+- **Componente de Estrelas Interativo**
+  - Interface visual de 5 estrelas com feedback em tempo real
+  - Hover preview (pré-visualização) ao passar o mouse
+  - Suporte completo a touch (mobile)
+  - Animações suaves e efeitos visuais (glow, scale)
+  - Cor dourada (#FFD700) para estrelas preenchidas
+- **Integração no Grid (Aba "Upload")**
+  - Estrelas aparecem ao passar mouse sobre o card
+  - Sempre visíveis se foto já foi avaliada
+  - Click em estrela NÃO abre o viewer (event.stopPropagation)
+  - Atualização instantânea do badge após avaliação
+- **Integração no Viewer Fullscreen**
+  - Estrelas centralizadas abaixo da imagem
+  - Atalhos de teclado: 1-5 para avaliar, Shift+0 para resetar zoom
+  - Sincronização automática ao navegar (←/→)
+  - Feedback visual imediato com toast
+- **Aba "Avaliar" Funcional**
+  - Interface dedicada para ranqueamento sequencial
+  - Foto grande centralizada com estrelas logo abaixo
+  - Navegação: botões "← Anterior" e "Próxima →"
+  - Progresso em tempo real: "Foto X de Y (Z avaliadas)"
+  - Filtro "Mostrar apenas não avaliadas" (checkbox)
+  - Estado vazio: "Todas as fotos já foram avaliadas! 🎉"
+  - Atalhos de teclado:
+    - `←/→`: Navegar entre fotos
+    - `1-5`: Avaliar foto atual
+    - `0`: Remover avaliação
+    - `Esc`: Voltar para aba Upload
+
+**Sistema de Filtros:**
+- **Tabs de Filtragem (Aba "Upload")**
+  - "Todas" (padrão)
+  - "⭐ 5 estrelas" (apenas fotos nota máxima)
+  - "Não avaliadas" (fotos sem rating ou rating = 0)
+- **Contadores Dinâmicos**
+  - Cada tab mostra quantidade de fotos
+  - Atualização instantânea ao avaliar
+  - Persistência ao fazer upload de novas fotos
+- **Interface Responsiva**
+  - Tabs horizontais no desktop
+  - Dropdown vertical no mobile
+  - Transições suaves entre filtros
+
+**Persistência e Metadados:**
+- Campo `rating` (0-5) em todas as fotos
+- `rating = 0` significa "não avaliado" (padrão)
+- Campo `evaluatedAt` (timestamp) quando foto é avaliada
+- Índice IndexedDB otimizado para queries de rating
+- Migração automática de fotos antigas (adiciona rating = 0)
+
+### 🎨 UX e Interface
+- **Feedback Tátil**: Vibração curta no mobile ao avaliar (50ms)
+- **Toasts Informativos**: "Avaliada com X estrelas!" / "Avaliação removida"
+- **Badges Visuais**:
+  - "★ X" (azul) quando foto tem rating
+  - "Novo" (roxo) quando foto não tem rating
+  - "Cortado" (verde) para fotos divididas em 2×2
+  - Empilhamento vertical sem cobrir a imagem
+- **Animações Suaves**:
+  - Estrelas com scale (1.15x) e glow ao hover
+  - Transition em 150ms para todas as interações
+  - Drop shadow nas estrelas preenchidas
+- **Responsividade**:
+  - Estrelas 24px (mobile) → 28px (desktop)
+  - Layout da aba "Avaliar" adaptado (vertical no mobile)
+  - Filtros em dropdown no mobile, tabs no desktop
+
+### ♿ Acessibilidade (A11Y)
+- **Componente de Estrelas**:
+  - `role="radiogroup"` no container
+  - `role="radio"` e `aria-checked` em cada estrela
+  - `aria-label` descritivo: "Avaliação: X de 5 estrelas"
+  - Navegação por Tab, Enter/Space para selecionar
+  - Setas (←/→) para navegar entre estrelas
+- **Atalhos de Teclado Globais**:
+  - `1-5`: Avaliar foto em foco no grid
+  - `0`: Remover avaliação
+  - Não conflita com atalhos existentes (U, S, Esc, Delete)
+- **Screen Reader**:
+  - Anúncio via `aria-live` ao avaliar
+  - Labels claros em todos os controles
+  - Progresso acessível na aba "Avaliar"
+- **Contraste WCAG AA**: Estrelas douradas ≥ 4.5:1
+
+**Sistema de Ordenação:**
+- **8 Opções de Ordenação**:
+  - 📅 Data (mais recente/mais antiga)
+  - ⭐ Avaliação (maior/menor)
+  - 📦 Tamanho em pixels (maior/menor)
+  - 📏 Dimensão/Resolução (maior/menor)
+- **Persistência**: Preferência salva no localStorage
+- **Sincronização**: Mesma ordem em grid, viewer e aba "Avaliar"
+- **UI**: Dropdown com ícones semânticos
+
+**Otimizações de UX:**
+- **Manutenção de Scroll**:
+  - Avaliar nas miniaturas: mantém posição exata
+  - Avaliar no viewer: faz scroll ao fechar + destaque visual
+  - Dividir/Reverter: mantém foco na foto resultante
+- **Viewer com Filtros**: Índices sincronizados (abre foto correta)
+- **Botão "Limpar" Contextual**:
+  - Respeita filtro ativo (remove apenas fotos visíveis)
+  - Mensagem detalhada: "Removerá X foto(s) [filtro]"
+- **Layout Responsivo**:
+  - Aba "Avaliar" sem scroll (elementos distribuídos)
+  - Header compacto (padding reduzido)
+  - Grid 1 coluna em telas < 400px (evita vazamento)
+- **Estrelas nos Cards**:
+  - Tamanho adaptativo: 20px → 16px (mobile) → 18px (mini)
+  - `max-width` para nunca vazar do card
+  - Gap reduzido em telas pequenas
+
+### 🐛 Correções
+- **Migração de Dados**: Fotos antigas recebem `rating = 0` automaticamente
+- **Upload**: Novas fotos já incluem `rating = 0` e `uploadedAt`
+- **Filtros**: Re-renderização correta ao trocar filtro ativo
+- **Viewer**: 
+  - Atalho `0` remove rating, `Shift+0` reseta zoom
+  - Abre foto correta mesmo com filtros/ordenação ativos
+  - Rating visual persiste ao navegar
+  - Fecha e faz scroll até última foto visualizada
+- **Grid**: 
+  - Click em estrelas não abre viewer (stopPropagation)
+  - Scroll mantém posição ao avaliar nas miniaturas
+  - Ícones adicionados no dropdown de ordenação
+- **Aba "Avaliar"**:
+  - Atalhos de teclado (1-5) atualizam estrelas visualmente
+  - Delay 300ms antes de avançar automaticamente
+  - Progresso mostra total geral mesmo com checkbox marcado
+  - Foco mantém ao alternar checkbox "apenas não avaliadas"
+  - Layout sem scroll em desktop e mobile
+  - Botões lado a lado em mobile
+- **Badge "Novo"**: Removido ao avaliar, reaparece se rating = 0
+- **Tab Navigation**: Todas as 5 estrelas tabuláveis (antes só a 1ª)
+
+### 📄 Documentação
+- `SPRINT3_PLAN.md`: Planejamento detalhado com RF/RNF
+- `SPRINT3_TESTS.md`: 41 casos de teste (8 categorias)
+- `README.md`: Atualizado com features da Sprint 3
+- `PROJECT_PLAN.md`: Status da Sprint 3 marcado como concluído
+- Código limpo: removidas funções não utilizadas (`blobToDataURL`, `loadImageFromURL`)
+
+---
+
 ## [v0.2.0] — 2025-10-28 (Sprint 2)
 ### ✨ Funcionalidades
 **Detecção e Divisão 2×2:**
