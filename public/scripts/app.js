@@ -16,7 +16,9 @@ import {
   calculateElo, 
   initializeEloScores, 
   generatePairings, 
-  updateEloScores 
+  updateEloScores,
+  getChampion,
+  generateRanking
 } from "./elo.js";
 
 const MAX_SIZE_MB = 15;
@@ -72,6 +74,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   initFilters(); // Sprint 3
   initRateView(); // Sprint 3
   initContestView(); // Sprint 4
+  initResultsView(); // Sprint 4
   
   const selectBtn = document.getElementById("selectModeBtn");
   selectBtn?.addEventListener("click", () => toggleSelectionMode());
@@ -2044,6 +2047,153 @@ function loadContestState() {
     console.error('Erro ao carregar estado do contest:', err);
     contestState = null;
   }
+}
+
+// ========================================
+//  SPRINT 4: RESULTS & CHAMPION (F4.4)
+// ========================================
+
+/**
+ * Inicializa aba "Resultados"
+ */
+function initResultsView() {
+  window.addEventListener('hashchange', () => {
+    if (location.hash === '#/results') {
+      renderResultsView();
+    }
+  });
+  
+  if (location.hash === '#/results') {
+    setTimeout(() => renderResultsView(), 100);
+  }
+}
+
+/**
+ * Renderiza aba "Resultados"
+ */
+async function renderResultsView() {
+  const container = $('#resultsView');
+  if (!container) return;
+  
+  // Carregar estado do contest
+  loadContestState();
+  
+  if (!contestState || contestState.phase !== 'finished') {
+    // Sem contest finalizado
+    container.innerHTML = `
+      <div class="results-empty">
+        <div class="results-empty-icon">📊</div>
+        <h3>Nenhum contest finalizado ainda</h3>
+        <p class="muted">Complete um contest para ver os resultados e o campeão!</p>
+        <button class="btn" onclick="location.hash='#/contest'">Ir para Contest</button>
+      </div>
+    `;
+    return;
+  }
+  
+  // Gerar ranking
+  const ranking = generateRanking(
+    contestState.qualifiedPhotos, 
+    contestState.eloScores, 
+    contestState.battleHistory
+  );
+  
+  const championId = getChampion(contestState.eloScores);
+  const champion = ranking.find(p => p.id === championId);
+  
+  if (!champion) {
+    container.innerHTML = `
+      <div class="results-empty">
+        <div class="results-empty-icon">❌</div>
+        <h3>Erro ao carregar resultados</h3>
+        <button class="btn" onclick="location.hash='#/contest'">Voltar</button>
+      </div>
+    `;
+    return;
+  }
+  
+  // Renderizar resultados
+  container.innerHTML = `
+    <!-- Campeão -->
+    <div class="champion-card">
+      <div class="champion-icon">🏆</div>
+      <h2>Campeã</h2>
+      <div class="champion-image">
+        <img src="${champion.thumb}" alt="Foto campeã">
+      </div>
+      <div class="champion-stats">
+        <div class="stat">
+          <strong>${champion.elo}</strong>
+          <span>Rating Elo</span>
+        </div>
+        <div class="stat">
+          <strong class="ranking-wins">${champion.wins}</strong>
+          <span>Vitórias</span>
+        </div>
+        <div class="stat">
+          <strong class="ranking-losses">${champion.losses}</strong>
+          <span>Derrotas</span>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Ranking Completo -->
+    <div class="ranking-section">
+      <h3>Ranking Completo</h3>
+      <div id="rankingList" class="ranking-list"></div>
+    </div>
+    
+    <!-- Ações -->
+    <div class="results-actions">
+      <button class="btn btn-secondary" id="restartContest">🔄 Recomeçar Contest</button>
+      <button class="btn" onclick="location.hash='#/rate'">Voltar para Avaliação</button>
+    </div>
+  `;
+  
+  // Renderizar ranking
+  const rankingList = $('#rankingList');
+  ranking.forEach((photo, index) => {
+    const isChampion = photo.id === championId;
+    const item = document.createElement('div');
+    item.className = `ranking-item ${isChampion ? 'champion' : ''}`;
+    
+    item.innerHTML = `
+      <div class="ranking-position">${isChampion ? '🏆' : `#${index + 1}`}</div>
+      <div class="ranking-thumb">
+        <img src="${photo.thumb}" alt="Foto ${index + 1}">
+      </div>
+      <div class="ranking-info">
+        <div class="ranking-elo">Elo: ${photo.elo}</div>
+        <div class="ranking-record">
+          <span class="ranking-wins">${photo.wins}V</span> - 
+          <span class="ranking-losses">${photo.losses}D</span>
+          ${photo.total > 0 ? ` (${Math.round(photo.wins / photo.total * 100)}%)` : ''}
+        </div>
+      </div>
+    `;
+    
+    rankingList.appendChild(item);
+  });
+  
+  // Event listener para recomeçar
+  $('#restartContest')?.addEventListener('click', confirmRestartContest);
+}
+
+/**
+ * Confirma recomeço do contest
+ */
+function confirmRestartContest() {
+  openConfirm({
+    title: 'Recomeçar Contest?',
+    message: 'Todo o histórico e resultados serão perdidos. Deseja recomeçar?',
+    confirmText: 'Recomeçar',
+    onConfirm: () => {
+      contestState = null;
+      saveContestState();
+      location.hash = '#/contest';
+      toast('Contest resetado. Inicie um novo!');
+    }
+  });
 }
 
 /**
