@@ -12,6 +12,12 @@ import { savePhotos, getAllPhotos, clearAll } from "./db.js";
 import { filesToThumbs } from "./image-utils.js";
 import { openCropper } from "./cropper.js";
 import { createStarRating, updateStarRating } from "./rating.js";
+import { 
+  calculateElo, 
+  initializeEloScores, 
+  generatePairings, 
+  updateEloScores 
+} from "./elo.js";
 
 const MAX_SIZE_MB = 15;
 const MAX_FILES_PER_BATCH = 300;
@@ -28,6 +34,9 @@ let allPhotos = []; // Cache de todas as fotos
 let rateViewIndex = 0; // Índice atual na aba "Avaliar"
 let rateViewPhotos = []; // Lista de fotos para avaliar (filtrada)
 let rateViewOnlyUnrated = false; // Filtro "apenas não avaliadas"
+
+// Sprint 4: Estado do Contest
+let contestState = null; // { phase, qualifiedPhotos, pairings, currentMatchIndex, eloScores, battleHistory }
 
 // Opções de ordenação
 const SORT_OPTIONS = {
@@ -1725,12 +1734,19 @@ async function renderContestView() {
   allPhotos = await getAllPhotos();
   const visiblePhotos = allPhotos.filter(p => !p._isSplit);
   
-  // Contar fotos qualificadas (rating = 5)
+  // Carregar ou inicializar estado do contest
+  loadContestState();
+  
+  // Verificar se há contest ativo
+  if (contestState && contestState.phase === 'battle') {
+    renderBattle();
+    return;
+  }
+  
+  // Estado inicial: sem contest ativo
   const qualifiedPhotos = visiblePhotos.filter(p => p.rating === 5);
   const qualifiedCount = qualifiedPhotos.length;
   
-  // Estado inicial (sem contest ativo)
-  // F4.3 implementará a lógica de batalha
   container.innerHTML = `
     <div class="contest-empty">
       <div class="contest-empty-icon">🏆</div>
@@ -1756,12 +1772,277 @@ async function renderContestView() {
     </div>
   `;
   
-  // Event listener para botão (será implementado em F4.3)
+  // Event listener para iniciar contest
   const startBtn = $('#startContest');
   if (startBtn && !startBtn.disabled) {
-    startBtn.addEventListener('click', () => {
-      toast('Funcionalidade de batalha será implementada em F4.3!');
-    });
+    startBtn.addEventListener('click', startContest);
+  }
+}
+
+/**
+ * Inicia um novo contest
+ */
+async function startContest() {
+  const allPhotos = await getAllPhotos();
+  const visiblePhotos = allPhotos.filter(p => !p._isSplit);
+  const qualifiedPhotos = visiblePhotos.filter(p => p.rating === 5);
+  
+  if (qualifiedPhotos.length < 2) {
+    toast('Você precisa de pelo menos 2 fotos com ⭐5');
+    return;
+  }
+  
+  // Inicializar estado do contest
+  const eloScores = initializeEloScores(qualifiedPhotos);
+  const pairings = generatePairings(qualifiedPhotos, eloScores, []);
+  
+  contestState = {
+    phase: 'battle',
+    qualifiedPhotos: qualifiedPhotos,
+    pairings: pairings,
+    currentMatchIndex: 0,
+    eloScores: eloScores,
+    battleHistory: []
+  };
+  
+  saveContestState();
+  renderBattle();
+  toast(`Contest iniciado! ${pairings.length} confrontos gerados.`);
+}
+
+/**
+ * Renderiza interface de confronto
+ */
+function renderBattle() {
+  const container = $('#contestView');
+  if (!container || !contestState) return;
+  
+  const { pairings, currentMatchIndex, eloScores } = contestState;
+  
+  if (currentMatchIndex >= pairings.length) {
+    // Contest finalizado
+    finishContest();
+    return;
+  }
+  
+  const currentPair = pairings[currentMatchIndex];
+  const photoA = currentPair.photoA;
+  const photoB = currentPair.photoB;
+  const eloA = eloScores[photoA.id] || 1500;
+  const eloB = eloScores[photoB.id] || 1500;
+  
+  container.innerHTML = `
+    <div class="contest-battle">
+      <div class="contest-progress">
+        Confronto <span class="current">${currentMatchIndex + 1}</span> de ${pairings.length}
+      </div>
+      
+      <div class="battle-container">
+        <!-- Foto A -->
+        <div class="battle-photo" id="battlePhotoA" tabindex="0" role="button" aria-label="Escolher Foto A (1 ou ←)">
+          <img src="${photoA.thumb}" alt="Foto A">
+          <div class="battle-label">1</div>
+          <div class="battle-elo">Elo: ${eloA}</div>
+        </div>
+        
+        <!-- VS -->
+        <div class="battle-vs">
+          <span>VS</span>
+        </div>
+        
+        <!-- Foto B -->
+        <div class="battle-photo" id="battlePhotoB" tabindex="0" role="button" aria-label="Escolher Foto B (2 ou →)">
+          <img src="${photoB.thumb}" alt="Foto B">
+          <div class="battle-label">2</div>
+          <div class="battle-elo">Elo: ${eloB}</div>
+        </div>
+      </div>
+      
+      <div class="battle-actions">
+        <button class="btn btn-secondary" id="cancelContest">Cancelar Contest</button>
+      </div>
+    </div>
+  `;
+  
+  // Event listeners
+  $('#battlePhotoA')?.addEventListener('click', () => chooseBattleWinner('A'));
+  $('#battlePhotoB')?.addEventListener('click', () => chooseBattleWinner('B'));
+  $('#cancelContest')?.addEventListener('click', confirmCancelContest);
+  
+  // Atalhos de teclado
+  document.addEventListener('keydown', handleBattleKeys);
+}
+
+/**
+ * Handler de atalhos de teclado na batalha
+ */
+function handleBattleKeys(e) {
+  if (location.hash !== '#/contest' || !contestState || contestState.phase !== 'battle') {
+    return;
+  }
+  
+  const tag = (e.target && e.target.tagName) || "";
+  const typing = ["INPUT", "TEXTAREA", "SELECT"].includes(tag);
+  if (typing) return;
+  
+  // Teclas 1 ou ← → Foto A vence
+  if (e.key === '1' || e.key === 'ArrowLeft') {
+    e.preventDefault();
+    chooseBattleWinner('A');
+  }
+  
+  // Teclas 2 ou → → Foto B vence
+  if (e.key === '2' || e.key === 'ArrowRight') {
+    e.preventDefault();
+    chooseBattleWinner('B');
+  }
+  
+  // Esc → Cancelar contest
+  if (e.key === 'Escape') {
+    e.preventDefault();
+    confirmCancelContest();
+  }
+}
+
+/**
+ * Registra vencedor de um confronto
+ */
+async function chooseBattleWinner(winner) {
+  if (!contestState || contestState.phase !== 'battle') return;
+  
+  const { pairings, currentMatchIndex, eloScores } = contestState;
+  const currentPair = pairings[currentMatchIndex];
+  
+  const winnerId = winner === 'A' ? currentPair.photoA.id : currentPair.photoB.id;
+  const loserId = winner === 'A' ? currentPair.photoB.id : currentPair.photoA.id;
+  
+  // Calcular novos ratings
+  const winnerElo = eloScores[winnerId];
+  const loserElo = eloScores[loserId];
+  const result = calculateElo(winnerElo, loserElo, 32);
+  
+  // Atualizar scores
+  contestState.eloScores = updateEloScores(winnerId, loserId, contestState.eloScores, 32);
+  
+  // Salvar no histórico
+  contestState.battleHistory.push({
+    photoA: currentPair.photoA.id,
+    photoB: currentPair.photoB.id,
+    winner: winnerId,
+    timestamp: Date.now(),
+    eloChange: result.change
+  });
+  
+  // Feedback visual
+  const winnerPhoto = winner === 'A' ? $('#battlePhotoA') : $('#battlePhotoB');
+  if (winnerPhoto) {
+    winnerPhoto.style.borderColor = '#3ddc97';
+    winnerPhoto.style.transform = 'scale(1.05)';
+  }
+  
+  toast(`Foto ${winner} venceu! ${result.change.winner > 0 ? '+' : ''}${result.change.winner} Elo`);
+  
+  // Avançar para próximo confronto após delay
+  await new Promise(resolve => setTimeout(resolve, 800));
+  
+  contestState.currentMatchIndex++;
+  saveContestState();
+  renderBattle();
+}
+
+/**
+ * Finaliza contest e vai para resultados
+ */
+function finishContest() {
+  if (!contestState) return;
+  
+  contestState.phase = 'finished';
+  saveContestState();
+  
+  toast('🏆 Contest finalizado! Veja os resultados.');
+  
+  // Redirecionar para aba Resultados
+  setTimeout(() => {
+    location.hash = '#/results';
+  }, 1000);
+}
+
+/**
+ * Confirma cancelamento do contest
+ */
+function confirmCancelContest() {
+  openConfirm({
+    title: 'Cancelar Contest?',
+    message: 'Todo o progresso será perdido. Deseja cancelar?',
+    confirmText: 'Cancelar Contest',
+    onConfirm: () => {
+      contestState = null;
+      saveContestState();
+      renderContestView();
+      toast('Contest cancelado.');
+    }
+  });
+}
+
+/**
+ * Salva estado do contest no localStorage
+ */
+function saveContestState() {
+  if (contestState) {
+    // Salvar apenas dados essenciais (sem objetos Photo completos)
+    const stateToSave = {
+      phase: contestState.phase,
+      qualifiedPhotoIds: contestState.qualifiedPhotos?.map(p => p.id) || [],
+      pairings: contestState.pairings?.map(pair => ({
+        photoA: pair.photoA.id,
+        photoB: pair.photoB.id
+      })) || [],
+      currentMatchIndex: contestState.currentMatchIndex,
+      eloScores: contestState.eloScores,
+      battleHistory: contestState.battleHistory
+    };
+    
+    localStorage.setItem('photoranker-contest-state', JSON.stringify(stateToSave));
+  } else {
+    localStorage.removeItem('photoranker-contest-state');
+  }
+}
+
+/**
+ * Carrega estado do contest do localStorage
+ */
+function loadContestState() {
+  try {
+    const saved = localStorage.getItem('photoranker-contest-state');
+    if (!saved) {
+      contestState = null;
+      return;
+    }
+    
+    const state = JSON.parse(saved);
+    
+    // Reconstruir objetos Photo completos
+    const qualifiedPhotos = state.qualifiedPhotoIds
+      .map(id => allPhotos.find(p => p.id === id))
+      .filter(Boolean);
+    
+    const pairings = state.pairings.map(pair => ({
+      photoA: allPhotos.find(p => p.id === pair.photoA),
+      photoB: allPhotos.find(p => p.id === pair.photoB)
+    })).filter(pair => pair.photoA && pair.photoB);
+    
+    contestState = {
+      phase: state.phase,
+      qualifiedPhotos: qualifiedPhotos,
+      pairings: pairings,
+      currentMatchIndex: state.currentMatchIndex,
+      eloScores: state.eloScores,
+      battleHistory: state.battleHistory
+    };
+    
+  } catch (err) {
+    console.error('Erro ao carregar estado do contest:', err);
+    contestState = null;
   }
 }
 
