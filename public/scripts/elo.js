@@ -49,11 +49,61 @@ export function initializeEloScores(photos, initialRating = 1500) {
 }
 
 /**
- * Gera pares de confronto balanceados (evita repetição)
+ * Gera sistema de eliminatória completo (bracket/chaves)
+ * Todos os participantes batalham até sobrar apenas 1 campeão
+ * 
  * @param {Array} photos - Fotos qualificadas
  * @param {Object} eloScores - Scores atuais { photoId: rating }
- * @param {Array} history - Confrontos já realizados [{photoA, photoB, winner}, ...]
- * @returns {Array} [{photoA, photoB}, ...] Array de pares para confronto
+ * @returns {Object} { rounds: [[{photoA, photoB}, ...], ...], totalMatches: number }
+ */
+export function generateEliminationBracket(photos, eloScores = {}) {
+  if (photos.length < 2) {
+    return { rounds: [], totalMatches: 0 };
+  }
+  
+  // Ordenar por Elo (seed do torneio)
+  const seeded = [...photos].sort((a, b) => 
+    (eloScores[b.id] || 1500) - (eloScores[a.id] || 1500)
+  );
+  
+  const rounds = [];
+  let currentRound = seeded;
+  
+  // Gerar rodadas até sobrar apenas 1 foto
+  while (currentRound.length > 1) {
+    const roundPairings = [];
+    
+    // Parear: 1º vs último, 2º vs penúltimo, etc (balanceado)
+    const half = Math.ceil(currentRound.length / 2);
+    
+    for (let i = 0; i < half; i++) {
+      const photoA = currentRound[i];
+      const photoB = currentRound[currentRound.length - 1 - i];
+      
+      // Se não houver par (número ímpar), photoA passa automaticamente (bye)
+      if (photoA && photoB && photoA.id !== photoB.id) {
+        roundPairings.push({ photoA, photoB });
+      }
+    }
+    
+    if (roundPairings.length > 0) {
+      rounds.push(roundPairings);
+    }
+    
+    // Próxima rodada terá metade dos participantes (vencedores)
+    // Como ainda não sabemos os vencedores, preparamos para a quantidade esperada
+    currentRound = currentRound.slice(0, half);
+  }
+  
+  // Calcular total de confrontos
+  const totalMatches = rounds.reduce((sum, round) => sum + round.length, 0);
+  
+  return { rounds, totalMatches };
+}
+
+/**
+ * Gera pares de confronto balanceados (LEGADO - usar generateEliminationBracket)
+ * @deprecated Use generateEliminationBracket para sistema de eliminatória
  */
 export function generatePairings(photos, eloScores = {}, history = []) {
   if (photos.length < 2) {
@@ -68,44 +118,13 @@ export function generatePairings(photos, eloScores = {}, history = []) {
   const pairings = [];
   const used = new Set();
   
-  // Estratégia: parear fotos com Elo próximo (confrontos equilibrados)
-  for (let i = 0; i < sorted.length - 1; i++) {
-    if (used.has(sorted[i].id)) continue;
-    
-    // Tentar parear com a próxima foto ainda não usada
-    for (let j = i + 1; j < sorted.length; j++) {
-      if (used.has(sorted[j].id)) continue;
-      
-      // Verificar se confronto já ocorreu
-      const pairKey = [sorted[i].id, sorted[j].id].sort().join('-');
-      const alreadyFaced = history.some(h => {
-        const historyKey = [h.photoA, h.photoB].sort().join('-');
-        return historyKey === pairKey;
+  // Parear fotos adjacentes (após ordenação por Elo)
+  for (let i = 0; i < sorted.length - 1; i += 2) {
+    if (i + 1 < sorted.length) {
+      pairings.push({
+        photoA: sorted[i],
+        photoB: sorted[i + 1]
       });
-      
-      if (!alreadyFaced) {
-        pairings.push({ 
-          photoA: sorted[i], 
-          photoB: sorted[j] 
-        });
-        used.add(sorted[i].id);
-        used.add(sorted[j].id);
-        break;
-      }
-    }
-  }
-  
-  // Se ainda há fotos não pareadas e sem confrontos disponíveis,
-  // gerar confrontos repetidos (round 2)
-  if (used.size < photos.length && pairings.length === 0) {
-    // Resetar e gerar sem verificar histórico
-    for (let i = 0; i < sorted.length - 1; i += 2) {
-      if (i + 1 < sorted.length) {
-        pairings.push({
-          photoA: sorted[i],
-          photoB: sorted[i + 1]
-        });
-      }
     }
   }
   
