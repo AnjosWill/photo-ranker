@@ -1160,6 +1160,9 @@ body.selection-mode .split-btn {
   transition: all 0.25s ease;
   border: 3px solid transparent;
   max-height: 600px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 /* Imagens grandes no container full - explorar mais espaço */
