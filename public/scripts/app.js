@@ -2331,16 +2331,9 @@ async function renderQualifyingBattle() {
   
   // Verificar se já batalharam (apenas na fase classificatória, não no bracket)
   // No bracket, fotos podem batalhar novamente em rodadas diferentes
-  const previousWinner = getPreviousWinner(photoA.id, photoB.id, battleHistory);
-  
-  if (previousWinner) {
-    console.log('[DEBUG] Confronto automático detectado:', previousWinner);
-    toast(`⚡ Confronto automático: ${previousWinner === 'A' ? 'Foto A' : 'Foto B'} já venceu antes!`);
-    await new Promise(resolve => setTimeout(resolve, 1200));
-    // Chamar handleQualifyingBattle diretamente para evitar loop
-    await handleQualifyingBattle(previousWinner);
-    return;
-  }
+  // IMPORTANTE: Só verificar se o usuário ainda não votou manualmente
+  // Se o usuário clicou, processar o voto normalmente (não usar confronto automático)
+  // O confronto automático só deve ser usado quando renderiza a batalha, não quando processa o voto
   
   // Calcular estatísticas
   const photoStats = calculatePhotoStats(qualifiedPhotos, eloScores, battleHistory);
