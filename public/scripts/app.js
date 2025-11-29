@@ -3154,6 +3154,7 @@ async function chooseBattleWinner(winner) {
 async function handleQualifyingBattle(winner) {
   console.log('[DEBUG] handleQualifyingBattle iniciado');
   console.log('[DEBUG] contestState.qualifying:', contestState.qualifying);
+  console.log('[DEBUG] contestState.qualifying.currentMatch:', contestState.qualifying.currentMatch);
   
   try {
     // Verificar se currentMatch existe, se não, tentar pegar da fila
@@ -3169,7 +3170,12 @@ async function handleQualifyingBattle(winner) {
       }
     }
     
-    const { currentMatch, eloScores, qualifying } = contestState;
+    // IMPORTANTE: pegar currentMatch de qualifying, não de contestState diretamente!
+    const currentMatch = contestState.qualifying.currentMatch;
+    const eloScores = contestState.eloScores;
+    const qualifying = contestState.qualifying;
+    
+    console.log('[DEBUG] currentMatch após pegar:', currentMatch);
     
     if (!currentMatch) {
       console.error('[DEBUG] currentMatch ainda não existe após tentar pegar da fila!');
