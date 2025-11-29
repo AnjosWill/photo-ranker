@@ -5202,13 +5202,8 @@ function renderBracketHistoryFromBracket(bracket) {
   
   // Renderizar cada round
   bracket.rounds.forEach((round, roundIdx) => {
-    const roundTypeLabel = round.type === 'initial' ? 'Rodada Inicial' 
-                         : round.type === 'winners' ? `Rodada ${round.round} - Vencedores`
-                         : round.type === 'losers' ? `Rodada ${round.round} - Perdedores`
-                         : `Rodada ${round.round}`;
-    
     html += `<div class="bracket-history-column" data-round="${roundIdx}">`;
-    html += `<div class="bracket-history-column-label">${roundTypeLabel}</div>`;
+    html += `<div class="bracket-history-column-label">Round ${round.round}</div>`;
     html += `<div class="bracket-history-matches">`;
     
     round.matches.forEach((match) => {
