@@ -3122,10 +3122,11 @@ function handleBattleKeys(e) {
 
 /**
  * Registra vencedor de um confronto
+ * IMPORTANTE: Esta função é chamada quando o usuário vota MANUALMENTE
+ * Não deve verificar confronto automático aqui - isso só acontece ao renderizar
  */
 async function chooseBattleWinner(winner) {
-  console.log('[DEBUG] chooseBattleWinner chamado:', winner);
-  console.log('[DEBUG] contestState:', contestState);
+  console.log('[DEBUG] chooseBattleWinner chamado (voto manual):', winner);
   
   if (!contestState) {
     console.error('[DEBUG] contestState não existe!');
@@ -3139,11 +3140,13 @@ async function chooseBattleWinner(winner) {
   
   console.log('[DEBUG] Phase atual:', contestState.phase);
   
+  // Processar voto diretamente, sem verificar confronto automático
+  // (o confronto automático só é verificado ao renderizar a batalha, não ao votar)
   if (contestState.phase === 'qualifying') {
-    console.log('[DEBUG] Processando batalha da fase classificatória');
+    console.log('[DEBUG] Processando batalha da fase classificatória (voto manual)');
     await handleQualifyingBattle(winner);
   } else if (contestState.phase === 'bracket') {
-    console.log('[DEBUG] Processando batalha da fase bracket');
+    console.log('[DEBUG] Processando batalha da fase bracket (voto manual)');
     await handleBracketBattle(winner);
   } else {
     console.error('[DEBUG] Fase desconhecida:', contestState.phase);
