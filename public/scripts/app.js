@@ -2026,6 +2026,15 @@ function haveAlreadyBattled(photoAId, photoBId, battleHistory) {
  * @param {Array} battleHistory - Histórico de batalhas
  * @returns {Array} [{photoA, photoB}, ...] Confrontos planejados
  */
+/**
+ * Gera batalhas da fase classificatória com pareamento inteligente por Elo
+ * Pareia fotos com Elo similar para ranquear de forma eficiente
+ * @param {Array} photos - Fotos participantes
+ * @param {number} battlesPerPhoto - Batalhas por foto (pode ser menor que total)
+ * @param {Object} eloScores - Scores Elo atuais
+ * @param {Array} battleHistory - Histórico de batalhas
+ * @returns {Array} [{photoA, photoB}, ...] Confrontos planejados
+ */
 function generateQualifyingBattles(photos, battlesPerPhoto, eloScores, battleHistory) {
   const matches = [];
   const photoBattleCount = {}; // Contador de batalhas por foto
@@ -2038,77 +2047,97 @@ function generateQualifyingBattles(photos, battlesPerPhoto, eloScores, battleHis
     battledPairs.add(pairKey);
   });
   
-  // Ordenar por Elo para parear de forma balanceada
+  // Ordenar por Elo (maior → menor)
   const ranked = [...photos].sort((a, b) => 
     (eloScores[b.id] || 1500) - (eloScores[a.id] || 1500)
   );
   
-  // Gerar batalhas até cada foto ter battlesPerPhoto batalhas
-  let attempts = 0;
-  const maxAttempts = photos.length * battlesPerPhoto * 10; // Aumentar tentativas
-  
-  while (attempts < maxAttempts) {
-    // Encontrar fotos que ainda precisam de batalhas
-    const needsBattles = ranked.filter(p => 
-      photoBattleCount[p.id] < battlesPerPhoto
-    );
+  // ESTRATÉGIA: Parear fotos com Elo similar (não todos contra todos)
+  // Para cada foto, tentar parear com fotos próximas no ranking
+  for (let i = 0; i < ranked.length; i++) {
+    const photoA = ranked[i];
     
-    if (needsBattles.length < 2) break;
+    // Se já tem batalhas suficientes, pular
+    if (photoBattleCount[photoA.id] >= battlesPerPhoto) continue;
     
-    // Tentar parear cada foto que precisa com outras que também precisam
-    let foundMatch = false;
+    // Tentar parear com fotos próximas no ranking (Elo similar)
+    // Buscar em uma janela ao redor da posição atual
+    const windowSize = Math.min(5, ranked.length - 1); // Janela de ±5 posições
+    const candidates = [];
     
-    for (let i = 0; i < needsBattles.length && !foundMatch; i++) {
-      const photoA = needsBattles[i];
+    // Adicionar candidatos próximos (antes e depois no ranking)
+    for (let offset = 1; offset <= windowSize; offset++) {
+      if (i - offset >= 0) {
+        candidates.push({ photo: ranked[i - offset], distance: offset });
+      }
+      if (i + offset < ranked.length) {
+        candidates.push({ photo: ranked[i + offset], distance: offset });
+      }
+    }
+    
+    // Ordenar candidatos por distância (mais próximo primeiro)
+    candidates.sort((a, b) => a.distance - b.distance);
+    
+    // Tentar parear com o melhor candidato disponível
+    for (const candidate of candidates) {
+      const photoB = candidate.photo;
       
-      // Se esta foto já tem batalhas suficientes, pular
+      // Se photoB já tem batalhas suficientes, pular
+      if (photoBattleCount[photoB.id] >= battlesPerPhoto) continue;
+      
+      // Verificar se já batalharam
+      const pairKey = [photoA.id, photoB.id].sort().join('-');
+      if (battledPairs.has(pairKey)) {
+        continue; // Já batalharam, pular
+      }
+      
+      // Verificar se já está nas matches geradas
+      const alreadyInMatches = matches.some(m => {
+        const matchPair = [m.photoA.id, m.photoB.id].sort().join('-');
+        return matchPair === pairKey;
+      });
+      
+      if (alreadyInMatches) {
+        continue; // Já está na lista, pular
+      }
+      
+      // Encontrou um par válido!
+      matches.push({ photoA, photoB });
+      photoBattleCount[photoA.id]++;
+      photoBattleCount[photoB.id]++;
+      battledPairs.add(pairKey); // Marcar como batalhado
+      break; // Parar após encontrar um par para esta foto
+    }
+  }
+  
+  // Se ainda há fotos que precisam de mais batalhas, tentar parear com qualquer disponível
+  const needsMore = ranked.filter(p => photoBattleCount[p.id] < battlesPerPhoto);
+  if (needsMore.length >= 2) {
+    for (let i = 0; i < needsMore.length; i++) {
+      const photoA = needsMore[i];
       if (photoBattleCount[photoA.id] >= battlesPerPhoto) continue;
       
-      // Tentar encontrar um oponente que:
-      // 1. Também precisa de batalhas
-      // 2. Ainda não batalhou com photoA
-      // 3. Não está na mesma posição
-      for (let j = 0; j < needsBattles.length && !foundMatch; j++) {
-        if (i === j) continue; // Não pode batalhar consigo mesma
-        
-        const photoB = needsBattles[j];
-        
-        // Se esta foto já tem batalhas suficientes, pular
+      for (let j = i + 1; j < needsMore.length; j++) {
+        const photoB = needsMore[j];
         if (photoBattleCount[photoB.id] >= battlesPerPhoto) continue;
         
-        // Verificar se já batalharam (busca rápida no Set)
         const pairKey = [photoA.id, photoB.id].sort().join('-');
-        if (battledPairs.has(pairKey)) {
-          continue; // Já batalharam, pular
-        }
+        if (battledPairs.has(pairKey)) continue;
         
-        // Verificar também nas matches já geradas (evitar duplicatas na mesma geração)
         const alreadyInMatches = matches.some(m => {
           const matchPair = [m.photoA.id, m.photoB.id].sort().join('-');
           return matchPair === pairKey;
         });
         
-        if (alreadyInMatches) {
-          continue; // Já está na lista de matches, pular
-        }
+        if (alreadyInMatches) continue;
         
-        // Encontrou um par válido!
         matches.push({ photoA, photoB });
         photoBattleCount[photoA.id]++;
         photoBattleCount[photoB.id]++;
-        battledPairs.add(pairKey); // Marcar como batalhado
-        foundMatch = true;
+        battledPairs.add(pairKey);
         break;
       }
     }
-    
-    // Se não encontrou nenhum match nesta iteração, parar
-    if (!foundMatch) {
-      console.log('[DEBUG] generateQualifyingBattles: Não foi possível gerar mais batalhas');
-      break;
-    }
-    
-    attempts++;
   }
   
   console.log('[DEBUG] generateQualifyingBattles: Geradas', matches.length, 'batalhas');
