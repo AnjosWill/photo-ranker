@@ -2198,27 +2198,42 @@ async function startContest() {
   // Inicializar scores Elo (todos começam iguais)
   const eloScores = initializeEloScores(qualifiedPhotos);
   
-  // Calcular batalhas por foto
-  const battlesPerPhoto = calculateBattlesPerPhoto(qualifiedPhotos.length);
-  const totalBattles = Math.ceil((qualifiedPhotos.length * battlesPerPhoto) / 2);
+  // ========================================
+  // NOVO SISTEMA: BRACKET DE ELIMINAÇÃO PROGRESSIVA
+  // ========================================
+  // Gerar estrutura de bracket (Double Elimination Tournament)
+  const bracket = generateBracketStructure(qualifiedPhotos);
   
-  // Sistema Elo/MMR: Não gerar todas as batalhas de uma vez
-  // Gerar batalhas dinamicamente conforme o Elo evolui
-  // Iniciar com algumas batalhas iniciais para começar o ranking
-  const initialMatches = generateQualifyingBattles(
-    qualifiedPhotos, 
-    Math.min(2, battlesPerPhoto), // Começar com 2 batalhas por foto
-    eloScores, 
-    []
-  );
-  
-  console.log('[DEBUG] startContest - initialMatches geradas:', initialMatches.length);
-  console.log('[DEBUG] startContest - primeira batalha:', initialMatches[0]);
-  
-  if (initialMatches.length === 0) {
-    toast('Erro: Não foi possível gerar batalhas. Verifique se há fotos suficientes.');
+  if (!bracket || !bracket.rounds[0] || bracket.rounds[0].matches.length === 0) {
+    toast('Erro: Não foi possível gerar bracket. Verifique se há fotos suficientes.');
     return;
   }
+  
+  // Pegar primeira batalha do Round 1
+  const firstRound = bracket.rounds[0];
+  const firstMatch = firstRound.matches[0];
+  
+  console.log('[DEBUG] startContest - Bracket gerado:', bracket);
+  console.log('[DEBUG] startContest - Round 1, primeira batalha:', firstMatch);
+  
+  // Calcular total de batalhas (aproximado)
+  const totalBattles = bracket.rounds[0].matches.length;
+  
+  // ========================================
+  // SISTEMA ANTERIOR (COMENTADO - PARA REVERSÃO)
+  // ========================================
+  // const battlesPerPhoto = calculateBattlesPerPhoto(qualifiedPhotos.length);
+  // const totalBattles = Math.ceil((qualifiedPhotos.length * battlesPerPhoto) / 2);
+  // const initialMatches = generateQualifyingBattles(
+  //   qualifiedPhotos, 
+  //   Math.min(2, battlesPerPhoto),
+  //   eloScores, 
+  //   []
+  // );
+  // if (initialMatches.length === 0) {
+  //   toast('Erro: Não foi possível gerar batalhas.');
+  //   return;
+  // }
   
   // Inicializar histórico de Elo por foto
   const eloHistory = {};
@@ -2233,15 +2248,19 @@ async function startContest() {
     qualifying: {
       totalBattles: totalBattles,
       completedBattles: 0,
-      battlesPerPhoto: battlesPerPhoto,
-      currentMatch: initialMatches[0] || null,
-      pendingMatches: initialMatches.slice(1),
-      eloHistory: eloHistory,
-      // Sistema dinâmico: gerar mais batalhas conforme Elo evolui
-      dynamicMatching: true
+      // NOVO: usar bracket em vez de matches
+      bracket: bracket,
+      currentRound: 0, // Round atual (0-based)
+      currentMatchIndex: 0, // Match atual no round
+      // SISTEMA ANTERIOR (COMENTADO):
+      // battlesPerPhoto: battlesPerPhoto,
+      // currentMatch: initialMatches[0] || null,
+      // pendingMatches: initialMatches.slice(1),
+      // dynamicMatching: true
+      eloHistory: eloHistory
     },
     
-    bracket: null, // Será preenchido ao finalizar classificatória
+    bracket: null, // Mantido para compatibilidade
     
     eloScores: eloScores,
     battleHistory: [],
@@ -3826,41 +3845,65 @@ async function chooseBattleWinner(winner) {
 async function handleQualifyingBattle(winner) {
   console.log('[DEBUG] handleQualifyingBattle iniciado');
   console.log('[DEBUG] contestState.qualifying:', contestState.qualifying);
-  console.log('[DEBUG] contestState.qualifying.currentMatch:', contestState.qualifying.currentMatch);
   
   try {
-    // Verificar se currentMatch existe, se não, tentar pegar da fila
-    if (!contestState.qualifying.currentMatch) {
-      console.log('[DEBUG] currentMatch vazio, tentando pegar da fila');
-      if (contestState.qualifying.pendingMatches.length > 0) {
-        contestState.qualifying.currentMatch = contestState.qualifying.pendingMatches.shift();
-        console.log('[DEBUG] Novo currentMatch da fila:', contestState.qualifying.currentMatch);
-      } else {
-        console.error('[DEBUG] Não há mais batalhas na fila!');
-        await finishQualifyingAndStartBracket();
-        return;
-      }
-    }
-    
-    // IMPORTANTE: pegar currentMatch de qualifying, não de contestState diretamente!
-    const currentMatch = contestState.qualifying.currentMatch;
-    const eloScores = contestState.eloScores;
-    const qualifying = contestState.qualifying;
-    
-    console.log('[DEBUG] currentMatch após pegar:', currentMatch);
-    
-    if (!currentMatch) {
-      console.error('[DEBUG] currentMatch ainda não existe após tentar pegar da fila!');
-      console.error('[DEBUG] Estado completo:', contestState);
+    // ========================================
+    // NOVO SISTEMA: BRACKET
+    // ========================================
+    const bracket = contestState.qualifying.bracket;
+    if (!bracket || !bracket.rounds || bracket.rounds.length === 0) {
+      console.error('[DEBUG] Bracket não encontrado!');
+      await finishQualifyingAndStartBracket();
       return;
     }
     
-    console.log('[DEBUG] currentMatch:', currentMatch);
+    const currentRound = bracket.rounds[bracket.currentRound];
+    if (!currentRound || !currentRound.matches) {
+      console.error('[DEBUG] Round atual não encontrado!');
+      await finishQualifyingAndStartBracket();
+      return;
+    }
+    
+    const currentMatch = currentRound.matches[bracket.currentMatchIndex];
+    if (!currentMatch) {
+      console.error('[DEBUG] Match atual não encontrado!');
+      await finishQualifyingAndStartBracket();
+      return;
+    }
     
     const winnerPhoto = winner === 'A' ? currentMatch.photoA : currentMatch.photoB;
     const loserPhoto = winner === 'A' ? currentMatch.photoB : currentMatch.photoA;
     const winnerId = winnerPhoto.id;
     const loserId = loserPhoto.id;
+    
+    // Processar batalha no bracket
+    processBracketBattle(
+      bracket,
+      bracket.currentRound,
+      bracket.currentMatchIndex,
+      winnerPhoto,
+      loserPhoto
+    );
+    
+    // ========================================
+    // SISTEMA ANTERIOR (COMENTADO)
+    // ========================================
+    // if (!contestState.qualifying.currentMatch) {
+    //   if (contestState.qualifying.pendingMatches.length > 0) {
+    //     contestState.qualifying.currentMatch = contestState.qualifying.pendingMatches.shift();
+    //   } else {
+    //     await finishQualifyingAndStartBracket();
+    //     return;
+    //   }
+    // }
+    // const currentMatch = contestState.qualifying.currentMatch;
+    // const winnerPhoto = winner === 'A' ? currentMatch.photoA : currentMatch.photoB;
+    // const loserPhoto = winner === 'A' ? currentMatch.photoB : currentMatch.photoA;
+    // const winnerId = winnerPhoto.id;
+    // const loserId = loserPhoto.id;
+    
+    const eloScores = contestState.eloScores;
+    const qualifying = contestState.qualifying;
     
     console.log('[DEBUG] Winner:', winnerId, 'Loser:', loserId);
     
