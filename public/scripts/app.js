@@ -2649,11 +2649,27 @@ async function renderQualifyingBattle() {
   
   // Pegar round atual
   const currentRound = bracket.rounds[bracket.currentRound];
-  if (!currentRound || !currentRound.matches || currentRound.matches.length === 0) {
-    console.log('[DEBUG] Sem mais rounds - finalizando classificatória');
-    await finishQualifyingAndStartBracket();
+  if (!currentRound) {
+    console.error('[DEBUG] renderQualifyingBattle: currentRound não encontrado!', {
+      currentRound: bracket.currentRound,
+      totalRounds: bracket.rounds.length
+    });
+    await renderContestView();
     return;
   }
+  
+  if (!currentRound.matches || currentRound.matches.length === 0) {
+    console.error('[DEBUG] renderQualifyingBattle: Round sem matches!', {
+      round: currentRound.round,
+      type: currentRound.type
+    });
+    await renderContestView();
+    return;
+  }
+  
+  console.log('[DEBUG] renderQualifyingBattle - Round atual:', bracket.currentRound + 1, 
+              'Matches:', currentRound.matches.length, 
+              'currentMatchIndex:', bracket.currentMatchIndex);
   
   // Pegar match atual
   // Se currentMatchIndex está fora do range, verificar se há próximo round
@@ -2669,6 +2685,13 @@ async function renderQualifyingBattle() {
       await renderQualifyingBattle();
       return;
     } else {
+      // Não há mais rounds - verificar se houve batalhas antes de finalizar
+      const qualifyingBattles = contestState.battleHistory.filter(b => b.phase === 'qualifying');
+      if (qualifyingBattles.length === 0) {
+        console.warn('[DEBUG] Todos os rounds completos mas sem batalhas - resetando contest');
+        await renderContestView();
+        return;
+      }
       // Não há mais rounds - finalizar classificatória
       console.log('[DEBUG] Todos os rounds completos - finalizando classificatória');
       await finishQualifyingAndStartBracket();
@@ -2678,10 +2701,20 @@ async function renderQualifyingBattle() {
   
   const currentMatch = currentRound.matches[bracket.currentMatchIndex];
   if (!currentMatch) {
-    console.log('[DEBUG] Match atual não encontrado - avançando índice');
+    console.error('[DEBUG] Match atual não encontrado!', {
+      currentMatchIndex: bracket.currentMatchIndex,
+      matchesLength: currentRound.matches.length
+    });
+    // Tentar avançar para próximo match
     bracket.currentMatchIndex++;
-    await renderQualifyingBattle();
-    return;
+    if (bracket.currentMatchIndex < currentRound.matches.length) {
+      await renderQualifyingBattle();
+      return;
+    } else {
+      // Não há mais matches neste round
+      await renderContestView();
+      return;
+    }
   }
   
   // Verificar se match já foi completado (bye)
