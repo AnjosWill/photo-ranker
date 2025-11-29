@@ -4465,13 +4465,14 @@ async function handleFinalBattle(winner) {
  * Finaliza fase final e define campeã
  */
 async function finishFinalPhase() {
-  const { final, eloScores, battleHistory } = contestState;
+  const { final, eloScores, battleHistory, qualifiedPhotos } = contestState;
   
-  // Calcular ranking final baseado em W-L (vitórias - perdas)
+  // IMPORTANTE: Calcular ranking considerando TODAS as batalhas (qualifying + final)
+  // Isso garante que o campeão seja o primeiro do ranking completo
   const photoStats = calculatePhotoStats(
-    final.finalPhotos,
+    qualifiedPhotos, // TODAS as fotos que participaram (não apenas finalPhotos)
     eloScores,
-    battleHistory.filter(b => b.phase === 'final'),
+    battleHistory, // TODAS as batalhas (qualifying + final)
     {}
   );
   
@@ -4479,7 +4480,8 @@ async function finishFinalPhase() {
   const statsWithRank = calculateRankingFromStats(photoStats, true);
   
   // Ordenar por W-L (vitórias - perdas, maior → menor)
-  const ranked = [...final.finalPhotos]
+  // Considerar TODAS as fotos que participaram, não apenas as da fase final
+  const ranked = [...qualifiedPhotos]
     .map(p => ({
       ...p,
       stats: statsWithRank[p.id]
@@ -4503,12 +4505,32 @@ async function finishFinalPhase() {
         return a.stats.losses - b.stats.losses;
       }
       
-      // 4. ID (para consistência)
+      // 4. Score (desempate final)
+      const scoreA = contestState.scoresAndTiers[a.id]?.score || 50;
+      const scoreB = contestState.scoresAndTiers[b.id]?.score || 50;
+      if (scoreB !== scoreA) {
+        return scoreB - scoreA;
+      }
+      
+      // 5. ID (para consistência)
       return a.id.localeCompare(b.id);
     });
   
-  // Campeã é a primeira do ranking (maior W-L)
+  // Campeã é a primeira do ranking completo (maior W-L considerando todas as batalhas)
   const championId = ranked[0].id;
+  
+  console.log('[DEBUG] finishFinalPhase - Campeão definido:', {
+    championId,
+    championWins: ranked[0].stats.wins,
+    championLosses: ranked[0].stats.losses,
+    championWL: ranked[0].stats.wins - ranked[0].stats.losses,
+    rankingTop3: ranked.slice(0, 3).map(p => ({
+      id: p.id,
+      wins: p.stats.wins,
+      losses: p.stats.losses,
+      wl: p.stats.wins - p.stats.losses
+    }))
+  });
   
   contestState.phase = 'finished';
   contestState.championId = championId;
