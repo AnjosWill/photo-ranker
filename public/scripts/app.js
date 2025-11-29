@@ -3876,7 +3876,11 @@ function saveContestState() {
       } : null,
       
       eloScores: contestState.eloScores,
-      battleHistory: contestState.battleHistory
+      battleHistory: contestState.battleHistory,
+      photoStats: contestState.photoStats || {},
+      frozen: contestState.frozen || false,
+      eloRange: contestState.eloRange || { min: 1500, max: 1500 },
+      scoresAndTiers: contestState.scoresAndTiers || {}
     };
     
     localStorage.setItem('photoranker-contest-state', JSON.stringify(stateToSave));
