@@ -2617,8 +2617,22 @@ async function renderQualifyingBattle() {
   // NOVO SISTEMA: BRACKET
   // ========================================
   const bracket = qualifying.bracket;
+  
+  // Se não há bracket (estado antigo), tentar migrar ou resetar
   if (!bracket || !bracket.rounds || bracket.rounds.length === 0) {
-    console.error('[DEBUG] renderQualifyingBattle: bracket não encontrado!');
+    console.warn('[DEBUG] renderQualifyingBattle: bracket não encontrado! Estado antigo detectado.');
+    
+    // Se há currentMatch/pendingMatches (sistema antigo), resetar contest
+    if (qualifying.currentMatch || (qualifying.pendingMatches && qualifying.pendingMatches.length > 0)) {
+      console.warn('[DEBUG] Estado antigo detectado - resetando contest para evitar quebra');
+      contestState = null;
+      saveContestState();
+      await renderContestView();
+      toast('Estado antigo detectado. Por favor, inicie um novo contest.');
+      return;
+    }
+    
+    // Se não há nada, apenas renderizar tela inicial
     await renderContestView();
     return;
   }
@@ -3884,9 +3898,14 @@ async function handleQualifyingBattle(winner) {
     // NOVO SISTEMA: BRACKET
     // ========================================
     const bracket = contestState.qualifying.bracket;
+    
+    // Se não há bracket (estado antigo), resetar
     if (!bracket || !bracket.rounds || bracket.rounds.length === 0) {
-      console.error('[DEBUG] Bracket não encontrado!');
-      await finishQualifyingAndStartBracket();
+      console.warn('[DEBUG] Bracket não encontrado! Estado antigo detectado - resetando.');
+      contestState = null;
+      saveContestState();
+      await renderContestView();
+      toast('Estado antigo detectado. Por favor, inicie um novo contest.');
       return;
     }
     
