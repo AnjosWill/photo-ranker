@@ -1867,7 +1867,7 @@ function getPreviousWinner(photoAId, photoBId, battleHistory) {
 }
 
 /**
- * Renderiza bracket visual (chaves do torneio)
+ * Renderiza bracket visual em diagrama (chaves do torneio com linhas)
  * @returns {string} HTML do bracket
  */
 function renderBracket() {
@@ -1882,28 +1882,22 @@ function renderBracket() {
     rounds[match.round].push(match);
   });
   
-  // Obter vencedores por rodada
-  const winnersByRound = {};
-  battleHistory.forEach(battle => {
-    if (!winnersByRound[battle.round]) winnersByRound[battle.round] = [];
-    if (!winnersByRound[battle.round].includes(battle.winner)) {
-      winnersByRound[battle.round].push(battle.winner);
-    }
-  });
-  
   // Identificar confronto atual
   const currentMatch = allMatches[currentMatchIndex];
   
-  let html = '<div class="bracket-container">';
+  // Calcular número máximo de rodadas
+  const maxRounds = Math.max(...Object.keys(rounds).map(Number));
   
-  // Renderizar cada rodada
-  Object.keys(rounds).sort((a, b) => a - b).forEach(roundNum => {
-    const round = parseInt(roundNum);
-    const matches = rounds[round];
-    const isCurrentRound = round === currentRound;
+  let html = '<div class="bracket-diagram">';
+  
+  // Renderizar cada rodada (da esquerda para direita)
+  for (let roundNum = 1; roundNum <= maxRounds; roundNum++) {
+    const matches = rounds[roundNum] || [];
+    const isCurrentRound = roundNum === currentRound;
     
-    html += `<div class="bracket-round ${isCurrentRound ? 'active' : ''}" data-round="${round}">`;
-    html += `<div class="bracket-round-label">Rodada ${round}</div>`;
+    html += `<div class="bracket-column ${isCurrentRound ? 'active' : ''}" data-round="${roundNum}">`;
+    html += `<div class="bracket-column-label">Rodada ${roundNum}</div>`;
+    html += `<div class="bracket-column-content">`;
     
     matches.forEach((match, matchIdx) => {
       const photoA = match.photoA;
@@ -1916,7 +1910,7 @@ function renderBracket() {
       const battle = battleHistory.find(b => 
         ((b.photoA === photoA.id && b.photoB === photoB.id) ||
          (b.photoA === photoB.id && b.photoB === photoA.id)) &&
-        b.round === round
+        b.round === roundNum
       );
       
       const winnerId = battle ? battle.winner : null;
@@ -1925,28 +1919,35 @@ function renderBracket() {
       
       html += `<div class="bracket-match ${isCurrentMatch ? 'current' : ''} ${battle ? 'decided' : ''}">`;
       
-      // Foto A
+      // Slot Foto A
       html += `<div class="bracket-slot ${photoAWon ? 'winner' : ''} ${photoBWon ? 'loser' : ''}">`;
       html += `<img src="${photoA.thumb}" alt="Foto A" class="bracket-thumb">`;
+      html += `<div class="bracket-info">`;
       html += `<div class="bracket-elo">${Math.round(eloScores[photoA.id] || 1500)}</div>`;
       if (photoAWon) html += '<span class="bracket-check">✓</span>';
-      html += `</div>`;
+      html += `</div></div>`;
       
-      // VS
-      html += `<div class="bracket-vs">VS</div>`;
+      // Linha horizontal entre fotos
+      html += `<div class="bracket-line-h"></div>`;
       
-      // Foto B
+      // Slot Foto B
       html += `<div class="bracket-slot ${photoBWon ? 'winner' : ''} ${photoAWon ? 'loser' : ''}">`;
       html += `<img src="${photoB.thumb}" alt="Foto B" class="bracket-thumb">`;
+      html += `<div class="bracket-info">`;
       html += `<div class="bracket-elo">${Math.round(eloScores[photoB.id] || 1500)}</div>`;
       if (photoBWon) html += '<span class="bracket-check">✓</span>';
-      html += `</div>`;
+      html += `</div></div>`;
+      
+      // Linha conectora para próxima rodada (se não for última)
+      if (roundNum < maxRounds) {
+        html += `<div class="bracket-connector"></div>`;
+      }
       
       html += `</div>`;
     });
     
-    html += `</div>`;
-  });
+    html += `</div></div>`;
+  }
   
   html += '</div>';
   return html;
@@ -1998,43 +1999,49 @@ async function renderBattle() {
   ) + 1;
   
   container.innerHTML = `
-    <div class="contest-battle-wrapper">
-      <!-- Bracket Visual (Sidebar) -->
-      <div class="contest-bracket-sidebar" id="contestBracket">
-        ${renderBracket()}
+    <div class="contest-battle">
+      <div class="contest-progress">
+        <strong>Rodada ${currentRound} de ${totalRounds}</strong><br>
+        Confronto <span class="current">${currentRoundIndex}</span> de ${currentRoundMatches.length}
       </div>
       
-      <!-- Battle Interface (Main) -->
-      <div class="contest-battle">
-        <div class="contest-progress">
-          <strong>Rodada ${currentRound} de ${totalRounds}</strong><br>
-          Confronto <span class="current">${currentRoundIndex}</span> de ${currentRoundMatches.length}
+      <div class="battle-container">
+        <!-- Foto A -->
+        <div class="battle-photo" id="battlePhotoA" tabindex="0" role="button" aria-label="Escolher Foto A (1 ou ←)">
+          <img src="${photoA.thumb}" alt="Foto A">
+          <div class="battle-label">1</div>
+          <div class="battle-elo">Elo: ${eloA}</div>
         </div>
         
-        <div class="battle-container">
-          <!-- Foto A -->
-          <div class="battle-photo" id="battlePhotoA" tabindex="0" role="button" aria-label="Escolher Foto A (1 ou ←)">
-            <img src="${photoA.thumb}" alt="Foto A">
-            <div class="battle-label">1</div>
-            <div class="battle-elo">Elo: ${eloA}</div>
-          </div>
-          
-          <!-- VS -->
-          <div class="battle-vs">
-            <span>VS</span>
-          </div>
-          
-          <!-- Foto B -->
-          <div class="battle-photo" id="battlePhotoB" tabindex="0" role="button" aria-label="Escolher Foto B (2 ou →)">
-            <img src="${photoB.thumb}" alt="Foto B">
-            <div class="battle-label">2</div>
-            <div class="battle-elo">Elo: ${eloB}</div>
-          </div>
+        <!-- VS -->
+        <div class="battle-vs">
+          <span>VS</span>
         </div>
         
-        <div class="battle-actions">
-          <button class="btn btn-secondary" id="cancelContest">Cancelar Contest</button>
+        <!-- Foto B -->
+        <div class="battle-photo" id="battlePhotoB" tabindex="0" role="button" aria-label="Escolher Foto B (2 ou →)">
+          <img src="${photoB.thumb}" alt="Foto B">
+          <div class="battle-label">2</div>
+          <div class="battle-elo">Elo: ${eloB}</div>
         </div>
+      </div>
+      
+      <div class="battle-actions">
+        <button class="btn btn-secondary" id="toggleBracket" data-tooltip="Mostrar/Ocultar Chaves">
+          📊 Chaves
+        </button>
+        <button class="btn btn-secondary" id="cancelContest">Cancelar Contest</button>
+      </div>
+    </div>
+    
+    <!-- Bracket Visual (Overlay/Toggle) -->
+    <div class="contest-bracket-overlay" id="contestBracketOverlay" aria-hidden="true">
+      <div class="bracket-overlay-header">
+        <h3>Chaves do Torneio</h3>
+        <button class="bracket-close" id="closeBracket" aria-label="Fechar chaves">&times;</button>
+      </div>
+      <div class="bracket-diagram-container" id="contestBracket">
+        ${renderBracket()}
       </div>
     </div>
   `;
@@ -2043,9 +2050,30 @@ async function renderBattle() {
   $('#battlePhotoA')?.addEventListener('click', () => chooseBattleWinner('A'));
   $('#battlePhotoB')?.addEventListener('click', () => chooseBattleWinner('B'));
   $('#cancelContest')?.addEventListener('click', confirmCancelContest);
+  $('#toggleBracket')?.addEventListener('click', toggleBracket);
+  $('#closeBracket')?.addEventListener('click', toggleBracket);
   
   // Atalhos de teclado
   document.addEventListener('keydown', handleBattleKeys);
+}
+
+/**
+ * Toggle bracket overlay
+ */
+function toggleBracket() {
+  const overlay = $('#contestBracketOverlay');
+  if (!overlay) return;
+  
+  const isHidden = overlay.getAttribute('aria-hidden') === 'true';
+  overlay.setAttribute('aria-hidden', isHidden ? 'false' : 'true');
+  
+  if (!isHidden) {
+    // Atualizar bracket ao abrir
+    const bracketContainer = $('#contestBracket');
+    if (bracketContainer) {
+      bracketContainer.innerHTML = renderBracket();
+    }
+  }
 }
 
 /**
