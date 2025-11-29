@@ -2569,20 +2569,17 @@ body.selection-mode .split-btn {
 
 /* Mobile: layout vertical */
 @media (max-width: 1024px) {
-  .contest-battle {
-    padding-right: var(--gap-4);
+  .battle-grid-layout {
+    grid-template-columns: 1fr;
+    gap: var(--gap-3);
   }
   
   .dynamic-ranking-sidebar {
     position: relative;
-    right: auto;
     top: auto;
-    transform: none;
     width: 100%;
     max-height: 300px;
-    border-radius: 12px;
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    margin-top: var(--gap-4);
+    order: -1; /* Ranking acima das imagens em mobile */
   }
   
   .battle-container-full {
