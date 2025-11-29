@@ -5304,7 +5304,7 @@ function renderBracketHistoryFromBattles() {
   // Fase Classificatória
   if (qualifyingBattles.length > 0) {
     html += `<div class="bracket-history-column">`;
-    html += `<div class="bracket-history-column-label">Fase Classificatória</div>`;
+    html += `<div class="bracket-history-column-label">Round 1</div>`;
     html += `<div class="bracket-history-matches">`;
     
     qualifyingBattles.forEach((battle) => {
@@ -5356,7 +5356,7 @@ function renderBracketHistoryFromBattles() {
   // Fase Final
   if (finalBattles.length > 0) {
     html += `<div class="bracket-history-column">`;
-    html += `<div class="bracket-history-column-label">Fase Final</div>`;
+    html += `<div class="bracket-history-column-label">Round 2</div>`;
     html += `<div class="bracket-history-matches">`;
     
     finalBattles.forEach((battle) => {
