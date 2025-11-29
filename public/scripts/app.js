@@ -20,7 +20,9 @@ import {
   generateRoundRobin,
   updateEloScores,
   getChampion,
-  generateRanking
+  generateRanking,
+  generateBracketStructure,
+  processBracketBattle
 } from "./elo.js";
 
 const MAX_SIZE_MB = 15;
