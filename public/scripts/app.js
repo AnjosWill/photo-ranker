@@ -5200,10 +5200,10 @@ function renderBracketHistoryFromBracket(bracket) {
   let html = '<div class="bracket-history-diagram">';
   html += '<div class="bracket-history-scroll">';
   
-  // Renderizar cada round
+  // Renderizar cada round com numeração sequencial única
   bracket.rounds.forEach((round, roundIdx) => {
     html += `<div class="bracket-history-column" data-round="${roundIdx}">`;
-    html += `<div class="bracket-history-column-label">Round ${round.round}</div>`;
+    html += `<div class="bracket-history-column-label">Round ${roundIdx + 1}</div>`;
     html += `<div class="bracket-history-matches">`;
     
     round.matches.forEach((match) => {
@@ -5294,17 +5294,19 @@ function renderBracketHistoryFromBattles() {
   
   const { battleHistory, qualifiedPhotos, scoresAndTiers } = contestState;
   
-  // Organizar batalhas por fase
+  // Organizar batalhas por fase e agrupar em rounds sequenciais
   const qualifyingBattles = battleHistory.filter(b => b.phase === 'qualifying');
   const finalBattles = battleHistory.filter(b => b.phase === 'final');
   
   let html = '<div class="bracket-history-diagram">';
   html += '<div class="bracket-history-scroll">';
   
+  let roundNumber = 1;
+  
   // Fase Classificatória
   if (qualifyingBattles.length > 0) {
     html += `<div class="bracket-history-column">`;
-    html += `<div class="bracket-history-column-label">Round 1</div>`;
+    html += `<div class="bracket-history-column-label">Round ${roundNumber}</div>`;
     html += `<div class="bracket-history-matches">`;
     
     qualifyingBattles.forEach((battle) => {
@@ -5351,12 +5353,13 @@ function renderBracketHistoryFromBattles() {
     });
     
     html += `</div></div>`;
+    roundNumber++; // Incrementar para próximo round
   }
   
   // Fase Final
   if (finalBattles.length > 0) {
     html += `<div class="bracket-history-column">`;
-    html += `<div class="bracket-history-column-label">Round 2</div>`;
+    html += `<div class="bracket-history-column-label">Round ${roundNumber}</div>`;
     html += `<div class="bracket-history-matches">`;
     
     finalBattles.forEach((battle) => {
