@@ -4630,20 +4630,18 @@ async function renderResultsView() {
     return;
   }
   
-  // Para contest finalizado, usar apenas fotos da fase final se disponível
-  // Caso contrário, usar todas as fotos qualificadas
-  const photosToRank = contestState.final?.finalPhotos || contestState.qualifiedPhotos;
+  // SEMPRE mostrar TODAS as fotos que participaram do contest (qualificadas)
+  // O ranking deve ser justo e mostrar todas as participantes
+  const photosToRank = contestState.qualifiedPhotos;
   
-  // Calcular stats considerando apenas batalhas da fase final (se houver)
-  // Para contest finalizado, queremos o W-L da fase final, não de todas as batalhas
-  const finalBattleHistory = contestState.final 
-    ? contestState.battleHistory.filter(b => b.phase === 'final')
-    : contestState.battleHistory;
+  // Calcular stats considerando TODAS as batalhas (qualifying + final)
+  // Isso garante que todas as fotos tenham seus W-L corretos, independente da fase
+  const allBattleHistory = contestState.battleHistory; // Todas as batalhas
   
   const photoStats = calculatePhotoStats(
     photosToRank, 
     contestState.eloScores, 
-    finalBattleHistory,
+    allBattleHistory, // Todas as batalhas para ranking completo
     contestState.photoStats
   );
   
