@@ -4999,6 +4999,18 @@ async function renderResultsView() {
     <div class="results-dashboard">
       <h3>Dashboard de Estatísticas</h3>
       
+      <!-- Histórico de Batalhas em Brackets -->
+      <div class="dashboard-section">
+        <h4>Histórico de Batalhas - Brackets</h4>
+        <div id="resultsBracketHistory" class="dashboard-bracket-history"></div>
+      </div>
+      
+      <!-- Histórico de Batalhas em Brackets -->
+      <div class="dashboard-section">
+        <h4>Histórico de Batalhas - Brackets</h4>
+        <div id="resultsBracketHistory" class="dashboard-bracket-history"></div>
+      </div>
+      
       <!-- Heatmap -->
       <div class="dashboard-section">
         <h4>Heatmap de Confrontos</h4>
@@ -5053,6 +5065,12 @@ async function renderResultsView() {
     
     rankingList.appendChild(item);
   });
+  
+  // Renderizar histórico de brackets
+  const bracketHistoryContainer = $('#resultsBracketHistory');
+  if (bracketHistoryContainer) {
+    bracketHistoryContainer.innerHTML = renderBracketHistory();
+  }
   
   // Renderizar heatmap
   const heatmapContainer = $('#resultsHeatmap');
