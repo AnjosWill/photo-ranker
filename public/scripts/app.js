@@ -2882,6 +2882,12 @@ function toggleOverlay(overlayId) {
 function renderRankingOverlay() {
   if (!contestState || (contestState.phase !== 'qualifying' && contestState.phase !== 'final')) return '';
   
+  // Usar fotos da fase atual
+  const photos = contestState.phase === 'final' 
+    ? (contestState.final?.finalPhotos || [])
+    : contestState.qualifiedPhotos;
+  
+  const { eloScores, battleHistory, scoresAndTiers } = contestState;
   const photoStats = calculatePhotoStats(photos, eloScores, battleHistory, contestState.photoStats);
   // Atualizar cache
   contestState.photoStats = photoStats;
