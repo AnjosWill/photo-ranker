@@ -2398,28 +2398,28 @@ async function renderQualifyingBattle() {
   battleKeysHandler = handleBattleKeys;
   document.addEventListener('keydown', battleKeysHandler);
   
-  // Event listeners para cliques
-  const photoA = $('#battlePhotoA');
-  const photoB = $('#battlePhotoB');
-  
-  if (photoA) {
-    // Remover listeners antigos se existirem
-    photoA.replaceWith(photoA.cloneNode(true));
-    const newPhotoA = $('#battlePhotoA');
-    newPhotoA?.addEventListener('click', (e) => {
+  // Event listeners para cliques - usar event delegation para evitar problemas
+  const battleContainer = $('.battle-container');
+  if (battleContainer) {
+    // Remover listeners antigos
+    const newContainer = battleContainer.cloneNode(true);
+    battleContainer.replaceWith(newContainer);
+    
+    // Adicionar listener no container (event delegation)
+    newContainer.addEventListener('click', (e) => {
+      const target = e.target.closest('#battlePhotoA, #battlePhotoB');
+      if (!target) return;
+      
       e.preventDefault();
       e.stopPropagation();
-      chooseBattleWinner('A');
-    });
-  }
-  
-  if (photoB) {
-    photoB.replaceWith(photoB.cloneNode(true));
-    const newPhotoB = $('#battlePhotoB');
-    newPhotoB?.addEventListener('click', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      chooseBattleWinner('B');
+      
+      if (target.id === 'battlePhotoA') {
+        console.log('[DEBUG] Clique detectado na Foto A');
+        chooseBattleWinner('A');
+      } else if (target.id === 'battlePhotoB') {
+        console.log('[DEBUG] Clique detectado na Foto B');
+        chooseBattleWinner('B');
+      }
     });
   }
   
@@ -2501,27 +2501,26 @@ async function renderBracketBattle() {
   battleKeysHandler = handleBattleKeys;
   document.addEventListener('keydown', battleKeysHandler);
   
-  // Event listeners para cliques
-  const photoA = $('#battlePhotoA');
-  const photoB = $('#battlePhotoB');
-  
-  if (photoA) {
-    photoA.replaceWith(photoA.cloneNode(true));
-    const newPhotoA = $('#battlePhotoA');
-    newPhotoA?.addEventListener('click', (e) => {
+  // Event listeners para cliques - usar event delegation
+  const battleContainer = $('.battle-container');
+  if (battleContainer) {
+    const newContainer = battleContainer.cloneNode(true);
+    battleContainer.replaceWith(newContainer);
+    
+    newContainer.addEventListener('click', (e) => {
+      const target = e.target.closest('#battlePhotoA, #battlePhotoB');
+      if (!target) return;
+      
       e.preventDefault();
       e.stopPropagation();
-      chooseBattleWinner('A');
-    });
-  }
-  
-  if (photoB) {
-    photoB.replaceWith(photoB.cloneNode(true));
-    const newPhotoB = $('#battlePhotoB');
-    newPhotoB?.addEventListener('click', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      chooseBattleWinner('B');
+      
+      if (target.id === 'battlePhotoA') {
+        console.log('[DEBUG] Clique detectado na Foto A (bracket)');
+        chooseBattleWinner('A');
+      } else if (target.id === 'battlePhotoB') {
+        console.log('[DEBUG] Clique detectado na Foto B (bracket)');
+        chooseBattleWinner('B');
+      }
     });
   }
   
