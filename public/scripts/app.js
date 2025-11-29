@@ -2023,13 +2023,19 @@ async function startContest() {
 
 /**
  * Verifica se duas fotos já batalharam antes e retorna a vencedora
+ * IMPORTANTE: Só verifica batalhas da fase 'qualifying', não do bracket
  * @param {string} photoAId - ID da foto A
  * @param {string} photoBId - ID da foto B
  * @param {Array} battleHistory - Histórico de batalhas
- * @returns {string|null} 'A' ou 'B' se já batalharam, null caso contrário
+ * @returns {string|null} 'A' ou 'B' se já batalharam na qualifying, null caso contrário
  */
 function getPreviousWinner(photoAId, photoBId, battleHistory) {
   for (const battle of battleHistory) {
+    // Só considerar batalhas da fase qualifying (bracket permite re-batalhas)
+    if (battle.phase && battle.phase !== 'qualifying') {
+      continue;
+    }
+    
     const battleIds = [battle.photoA, battle.photoB].sort();
     const currentIds = [photoAId, photoBId].sort();
     
@@ -2323,13 +2329,16 @@ async function renderQualifyingBattle() {
   const photoA = currentMatch.photoA;
   const photoB = currentMatch.photoB;
   
-  // Verificar se já batalharam
+  // Verificar se já batalharam (apenas na fase classificatória, não no bracket)
+  // No bracket, fotos podem batalhar novamente em rodadas diferentes
   const previousWinner = getPreviousWinner(photoA.id, photoB.id, battleHistory);
   
   if (previousWinner) {
+    console.log('[DEBUG] Confronto automático detectado:', previousWinner);
     toast(`⚡ Confronto automático: ${previousWinner === 'A' ? 'Foto A' : 'Foto B'} já venceu antes!`);
     await new Promise(resolve => setTimeout(resolve, 1200));
-    await chooseBattleWinner(previousWinner);
+    // Chamar handleQualifyingBattle diretamente para evitar loop
+    await handleQualifyingBattle(previousWinner);
     return;
   }
   
