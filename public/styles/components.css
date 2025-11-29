@@ -2921,6 +2921,13 @@ body.selection-mode .split-btn {
   max-width: 100%; /* Garantir que não extrapole */
 }
 
+.results-dashboard h4 {
+  margin: 0 0 var(--gap-3);
+  font-size: 18px;
+  color: var(--fg);
+  font-weight: 600;
+}
+
 .dashboard-section {
   margin-bottom: var(--gap-3);
   padding: var(--gap-2);
@@ -2943,35 +2950,7 @@ body.selection-mode .split-btn {
   font-weight: 600;
 }
 
-.dashboard-heatmap {
-  overflow-x: auto;
-  overflow-y: hidden;
-  padding: var(--gap-2);
-  max-width: 100%;
-  width: 100%;
-  box-sizing: border-box;
-  /* Scrollbar customizada */
-  scrollbar-width: thin;
-  scrollbar-color: rgba(106, 163, 255, 0.5) rgba(255, 255, 255, 0.1);
-}
-
-.dashboard-heatmap::-webkit-scrollbar {
-  height: 8px;
-}
-
-.dashboard-heatmap::-webkit-scrollbar-track {
-  background: rgba(255, 255, 255, 0.05);
-  border-radius: 4px;
-}
-
-.dashboard-heatmap::-webkit-scrollbar-thumb {
-  background: rgba(106, 163, 255, 0.5);
-  border-radius: 4px;
-}
-
-.dashboard-heatmap::-webkit-scrollbar-thumb:hover {
-  background: rgba(106, 163, 255, 0.7);
-}
+/* dashboard-heatmap removido - usando heatmap-container diretamente */
 
 /* Histórico de Brackets no Dashboard */
 .dashboard-bracket-history {

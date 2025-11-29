@@ -5041,10 +5041,8 @@ async function renderResultsView() {
       <div class="results-dashboard-column">
         <div class="results-dashboard">
           <!-- Heatmap -->
-          <div class="dashboard-section">
-            <h4>Heatmap de Confrontos</h4>
-            <div id="resultsHeatmap" class="dashboard-heatmap"></div>
-          </div>
+          <h4>Heatmap de Confrontos</h4>
+          <div id="resultsHeatmap"></div>
         </div>
       </div>
     </div>
@@ -5112,7 +5110,7 @@ async function renderResultsView() {
     console.error('[DEBUG] renderResultsView - Container resultsBracketHistory não encontrado!');
   }
   
-  // Renderizar heatmap
+  // Renderizar heatmap (sem container extra)
   const heatmapContainer = $('#resultsHeatmap');
   if (heatmapContainer) {
     try {
