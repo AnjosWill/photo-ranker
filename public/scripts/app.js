@@ -1854,21 +1854,8 @@ function generateNextMatch(photos, eloScores, battleHistory) {
  * @returns {Object} { photoId: {wins, losses, elo, rank} }
  */
 function calculatePhotoStats(photos, eloScores, battleHistory, cachedStats = null) {
-  // Se há cache e battleHistory não mudou, usar cache
-  if (cachedStats && contestState?.photoStats && 
-      battleHistory.length === Object.keys(cachedStats).reduce((sum, id) => 
-        sum + (cachedStats[id].wins || 0) + (cachedStats[id].losses || 0), 0) / 2)) {
-    // Apenas atualizar Elo (pode ter mudado)
-    Object.keys(cachedStats).forEach(id => {
-      if (cachedStats[id]) {
-        cachedStats[id].elo = eloScores[id] || 1500;
-      }
-    });
-    // Recalcular ranking (Elo pode ter mudado)
-    return calculateRankingFromStats(cachedStats);
-  }
-  
-  // Calcular do zero
+  // Calcular do zero (sempre recalcular para garantir consistência)
+  // Cache será usado apenas para atualização incremental em handleQualifyingBattle
   const stats = {};
   
   photos.forEach(p => {
