@@ -3100,8 +3100,11 @@ function renderBracketTree() {
       html += `<div class="tree-slot ${photoAWon ? 'winner' : ''} ${photoBWon ? 'loser' : ''}">`;
       html += `<img src="${photoA.thumb}" alt="Foto A" class="tree-thumb">`;
       html += `<div class="tree-info">`;
-      html += `<div class="tree-score">${scoreA.score}/100 ${scoreA.tier.icon}</div>`;
-      html += `<div class="tree-tier">${scoreA.tier.label}</div>`;
+      html += `<div class="tier-badge tier-badge-small">`;
+      html += `<div class="tier-icon">${scoreA.tier.icon}</div>`;
+      html += `<div class="tier-score">${scoreA.score}/100</div>`;
+      html += `<div class="tier-label">${scoreA.tier.label}</div>`;
+      html += `</div>`;
       if (battle) {
         html += `<div class="tree-votes">${votePercentA}% (${votesA} votos)</div>`;
         if (battle.eloChange && !contestState.frozen) {
