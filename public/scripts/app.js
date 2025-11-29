@@ -1745,14 +1745,26 @@ function initContestView() {
   // Renderizar quando aba for aberta
   window.addEventListener('hashchange', () => {
     if (location.hash === '#/contest') {
+      console.log('[DEBUG] hashchange detectado, renderizando contest');
       renderContestView();
     }
   });
   
   // Se já estiver na aba ao carregar
   if (location.hash === '#/contest') {
+    console.log('[DEBUG] Já está na aba contest ao carregar');
     setTimeout(() => renderContestView(), 100);
   }
+  
+  // Fallback: verificar se a rota está ativa mas não renderizou
+  setTimeout(() => {
+    const contestSection = document.querySelector('[data-route="contest"]');
+    const contestView = $('#contestView');
+    if (contestSection && contestSection.classList.contains('active') && contestView && !contestView.innerHTML.trim()) {
+      console.log('[DEBUG] Fallback: contest ativo mas vazio, renderizando...');
+      renderContestView();
+    }
+  }, 500);
 }
 
 /**
