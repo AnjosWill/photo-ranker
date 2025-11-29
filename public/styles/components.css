@@ -1165,12 +1165,15 @@ body.selection-mode .split-btn {
   justify-content: center;
 }
 
-/* Imagens grandes no container full - explorar mais espaço */
+/* Imagens grandes no container full - altura fit, largura máxima */
 .battle-container-full .battle-photo {
-  max-height: 90vh;
-  min-height: 700px;
   width: 100%;
-  aspect-ratio: auto;
+  height: fit-content;
+  max-height: 90vh; /* Limite máximo de altura para não ultrapassar viewport */
+  min-height: auto; /* Sem altura mínima fixa */
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .battle-photo:hover {
