@@ -1767,12 +1767,16 @@ async function renderContestView() {
   
   console.log('[DEBUG] renderContestView chamado');
   
-  // Carregar fotos atualizadas
+  // Carregar fotos atualizadas PRIMEIRO (antes de loadContestState)
   allPhotos = await getAllPhotos();
-  const visiblePhotos = allPhotos.filter(p => !p._isSplit);
+  console.log('[DEBUG] allPhotos carregadas:', allPhotos.length);
   
-  // Carregar ou inicializar estado do contest
+  const visiblePhotos = allPhotos.filter(p => !p._isSplit);
+  console.log('[DEBUG] visiblePhotos:', visiblePhotos.length);
+  
+  // Carregar ou inicializar estado do contest (agora que allPhotos está disponível)
   loadContestState();
+  console.log('[DEBUG] contestState após load:', contestState ? contestState.phase : 'null');
   
   // Verificar se há contest ativo
   if (contestState && (contestState.phase === 'qualifying' || contestState.phase === 'bracket')) {
