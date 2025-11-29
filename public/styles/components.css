@@ -1131,6 +1131,9 @@ body.selection-mode .split-btn {
   grid-template-columns: 1fr auto 1fr;
   gap: var(--gap-4);
   align-items: center;
+  max-width: 1400px;
+  width: 100%;
+  margin: 0;
 }
 
 .battle-photo {
