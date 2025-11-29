@@ -2729,18 +2729,22 @@ function renderBracketTreeOverlay() {
 
 /**
  * Mostra detalhes de uma foto (gráfico Elo, timeline, etc)
+ * Função global para ser chamada via onclick
  */
-function showPhotoDetails(photoId) {
+window.showPhotoDetails = function(photoId) {
   if (!contestState) return;
   
   const photo = contestState.qualifiedPhotos.find(p => p.id === photoId);
   if (!photo) return;
   
   const { eloScores, battleHistory, qualifying } = contestState;
-  const eloHistory = qualifying?.eloHistory[photoId] || [];
+  const eloHistory = qualifying?.eloHistory?.[photoId] || [];
   const photoBattles = battleHistory.filter(b => 
     b.photoA === photoId || b.photoB === photoId
   );
+  
+  const photoStats = calculatePhotoStats([photo], eloScores, battleHistory);
+  const stats = photoStats[photoId];
   
   // Criar modal de detalhes
   const modal = document.createElement('div');
@@ -2748,7 +2752,7 @@ function showPhotoDetails(photoId) {
   modal.innerHTML = `
     <div class="modal-content">
       <div class="modal-header">
-        <h3>Detalhes: ${photoId}</h3>
+        <h3>Detalhes da Foto</h3>
         <button class="modal-close" onclick="this.closest('.photo-details-modal').remove()">&times;</button>
       </div>
       <div class="modal-body">
@@ -2759,7 +2763,10 @@ function showPhotoDetails(photoId) {
               <strong>Power Level Atual:</strong> ${Math.round(eloScores[photoId] || 1500)}
             </div>
             <div class="stat-item">
-              <strong>Ranking:</strong> #${calculatePhotoStats([photo], eloScores, battleHistory)[photoId].rank}
+              <strong>Ranking:</strong> #${stats?.rank || 'N/A'}
+            </div>
+            <div class="stat-item">
+              <strong>Recorde:</strong> ${stats?.wins || 0}W - ${stats?.losses || 0}L
             </div>
           </div>
         </div>
@@ -3188,10 +3195,40 @@ function saveContestState() {
     const stateToSave = {
       phase: contestState.phase,
       qualifiedPhotoIds: contestState.qualifiedPhotos?.map(p => p.id) || [],
-      currentMatch: contestState.currentMatch ? {
-        photoA: contestState.currentMatch.photoA.id,
-        photoB: contestState.currentMatch.photoB.id
+      
+      // Fase Classificatória
+      qualifying: contestState.qualifying ? {
+        totalBattles: contestState.qualifying.totalBattles,
+        completedBattles: contestState.qualifying.completedBattles,
+        battlesPerPhoto: contestState.qualifying.battlesPerPhoto,
+        currentMatch: contestState.qualifying.currentMatch ? {
+          photoA: contestState.qualifying.currentMatch.photoA.id,
+          photoB: contestState.qualifying.currentMatch.photoB.id
+        } : null,
+        pendingMatches: contestState.qualifying.pendingMatches.map(m => ({
+          photoA: m.photoA.id,
+          photoB: m.photoB.id
+        })),
+        eloHistory: contestState.qualifying.eloHistory
       } : null,
+      
+      // Fase Bracket
+      bracket: contestState.bracket ? {
+        seedIds: contestState.bracket.seeds.map(p => p.id),
+        rounds: contestState.bracket.rounds.map(r => ({
+          round: r.round,
+          matches: r.matches.map(m => ({
+            photoA: m.photoA.id,
+            photoB: m.photoB.id,
+            winner: m.winner,
+            votesA: m.votesA,
+            votesB: m.votesB
+          }))
+        })),
+        currentRound: contestState.bracket.currentRound,
+        currentMatchIndex: contestState.bracket.currentMatchIndex
+      } : null,
+      
       eloScores: contestState.eloScores,
       battleHistory: contestState.battleHistory
     };
