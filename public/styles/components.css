@@ -2744,28 +2744,33 @@ body.selection-mode .split-btn {
 
 .champion-stats {
   display: flex;
-  gap: var(--gap-3);
+  gap: var(--gap-2);
   justify-content: center;
   flex-wrap: wrap;
+  align-items: center;
+  height: fit-content;
 }
 
 .champion-stats .stat {
   background: rgba(255, 255, 255, 0.05);
-  padding: 12px 24px;
-  border-radius: 12px;
+  padding: 8px 16px;
+  border-radius: 8px;
   border: 1px solid rgba(255, 255, 255, 0.1);
+  height: fit-content;
 }
 
 .champion-stats .stat strong {
   display: block;
-  font-size: 32px;
+  font-size: 24px;
   color: var(--brand);
   font-weight: 700;
+  line-height: 1.2;
 }
 
 .champion-stats .stat span {
-  font-size: 14px;
+  font-size: 12px;
   color: var(--muted);
+  line-height: 1.2;
 }
 
 /* Estatísticas Gerais (Visíveis Imediatamente) */
@@ -3189,7 +3194,7 @@ body.selection-mode .split-btn {
 
 .stats-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(3, 1fr);
   gap: var(--gap-2);
 }
 

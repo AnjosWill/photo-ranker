@@ -5149,10 +5149,6 @@ async function renderResultsView() {
             <div class="stat-value">${Math.round(avgScore)}</div>
             <div class="stat-label">Score Médio</div>
           </div>
-          <div class="stat-card">
-            <div class="stat-value">${totalWins}W / ${totalLosses}L</div>
-            <div class="stat-label">Recorde Total</div>
-          </div>
         </div>
       `;
       console.log('[DEBUG] renderResultsView - stats renderizados:', { totalPhotos, totalBattles, avgScore, totalWins, totalLosses });
