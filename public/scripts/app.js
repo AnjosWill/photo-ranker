@@ -5005,12 +5005,6 @@ async function renderResultsView() {
         <div id="resultsHeatmap" class="dashboard-heatmap"></div>
       </div>
       
-      <!-- Gráficos de Evolução (Top 5) -->
-      <div class="dashboard-section">
-        <h4>Evolução do Score - Top 5</h4>
-        <div id="resultsCharts" class="dashboard-charts"></div>
-      </div>
-      
       <!-- Estatísticas Gerais -->
       <div class="dashboard-section">
         <h4>Estatísticas Gerais do Contest</h4>
