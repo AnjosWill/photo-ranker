@@ -4998,7 +4998,7 @@ async function renderResultsView() {
   
   // Renderizar resultados
   container.innerHTML = `
-    <!-- Campeão -->
+    <!-- Campeão (Destaque Principal) -->
     <div class="champion-card">
       <div class="champion-icon">🏆</div>
       <h2>Campeã</h2>
@@ -5024,32 +5024,36 @@ async function renderResultsView() {
       </div>
     </div>
     
-    <!-- Ranking Completo -->
-    <div class="ranking-section">
-      <h3>Ranking Completo</h3>
-      <div id="rankingList" class="ranking-list"></div>
+    <!-- Estatísticas Gerais (Visíveis Imediatamente) -->
+    <div class="results-stats-overview">
+      <div id="resultsStats" class="dashboard-stats"></div>
     </div>
     
-    <!-- Dashboard de Estatísticas -->
-    <div class="results-dashboard">
-      <h3>Dashboard de Estatísticas</h3>
-      
-      <!-- Histórico de Batalhas em Brackets -->
-      <div class="dashboard-section">
-        <h4>Histórico de Batalhas - Brackets</h4>
-        <div id="resultsBracketHistory" class="dashboard-bracket-history"></div>
+    <!-- Layout Principal: Ranking + Dashboard -->
+    <div class="results-main-layout">
+      <!-- Coluna Esquerda: Ranking -->
+      <div class="results-ranking-column">
+        <div class="ranking-section">
+          <h3>Ranking Completo</h3>
+          <div id="rankingList" class="ranking-list"></div>
+        </div>
       </div>
       
-      <!-- Heatmap -->
-      <div class="dashboard-section">
-        <h4>Heatmap de Confrontos</h4>
-        <div id="resultsHeatmap" class="dashboard-heatmap"></div>
-      </div>
-      
-      <!-- Estatísticas Gerais -->
-      <div class="dashboard-section">
-        <h4>Estatísticas Gerais do Contest</h4>
-        <div id="resultsStats" class="dashboard-stats"></div>
+      <!-- Coluna Direita: Dashboard -->
+      <div class="results-dashboard-column">
+        <div class="results-dashboard">
+          <!-- Histórico de Batalhas em Brackets -->
+          <div class="dashboard-section">
+            <h4>Histórico de Batalhas - Brackets</h4>
+            <div id="resultsBracketHistory" class="dashboard-bracket-history"></div>
+          </div>
+          
+          <!-- Heatmap -->
+          <div class="dashboard-section">
+            <h4>Heatmap de Confrontos</h4>
+            <div id="resultsHeatmap" class="dashboard-heatmap"></div>
+          </div>
+        </div>
       </div>
     </div>
     
