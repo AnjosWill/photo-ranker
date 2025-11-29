@@ -5,9 +5,11 @@
  * Sprint 1: Upload, grid, viewer, multi-select
  * Sprint 2: Detecção 2×2, cropper, zoom/pan
  * Sprint 3: Rating por estrelas, filtros, ordenação, aba "Avaliar"
+ * Sprint 4: Contest com sistema de tiers temáticos (0-100)
  */
 
 import { $, on } from "./ui.js";
+import { calculateScoresAndTiers, calculateEloRange, normalizeEloToScore, getTierFromScore, TIERS } from "./tiers.js";
 import { savePhotos, getAllPhotos, clearAll } from "./db.js";
 import { filesToThumbs } from "./image-utils.js";
 import { openCropper } from "./cropper.js";
@@ -2499,7 +2501,8 @@ async function renderQualifyingBattle() {
             <img src="${photoA.thumb}" alt="Foto A">
             <div class="battle-label">1</div>
             <div class="battle-info">
-              <div class="battle-elo">Power: ${Math.round(eloA)}</div>
+              <div class="battle-score">${scoreA.score}/100 ${scoreA.tier.icon}</div>
+              <div class="battle-tier">${scoreA.tier.label}</div>
               <div class="battle-rank">#${statsA.rank} | ${statsA.wins}W-${statsA.losses}L</div>
             </div>
           </div>
@@ -2514,7 +2517,8 @@ async function renderQualifyingBattle() {
             <img src="${photoB.thumb}" alt="Foto B">
             <div class="battle-label">2</div>
             <div class="battle-info">
-              <div class="battle-elo">Power: ${Math.round(eloB)}</div>
+              <div class="battle-score">${scoreB.score}/100 ${scoreB.tier.icon}</div>
+              <div class="battle-tier">${scoreB.tier.label}</div>
               <div class="battle-rank">#${statsB.rank} | ${statsB.wins}W-${statsB.losses}L</div>
             </div>
           </div>
@@ -3480,13 +3484,32 @@ async function handleQualifyingBattle(winner) {
  * Finaliza fase classificatória e inicia bracket
  */
 async function finishQualifyingAndStartBracket() {
-  const { qualifiedPhotos, eloScores } = contestState;
+  const { qualifiedPhotos, eloScores, scoresAndTiers } = contestState;
   
-  // Calcular ranking final
+  // CONGELAR Elo e scores
+  contestState.frozen = true;
+  
+  // Calcular ranking final baseado em score (não Elo)
   const ranked = [...qualifiedPhotos]
-    .sort((a, b) => (eloScores[b.id] || 1500) - (eloScores[a.id] || 1500));
+    .map(p => ({
+      ...p,
+      scoreData: scoresAndTiers[p.id] || { score: 50, tier: TIERS[4] }
+    }))
+    .sort((a, b) => {
+      // Ordenar por score (maior → menor)
+      if (b.scoreData.score !== a.scoreData.score) {
+        return b.scoreData.score - a.scoreData.score;
+      }
+      // Desempate: mais vitórias
+      const statsA = contestState.photoStats[a.id] || { wins: 0 };
+      const statsB = contestState.photoStats[b.id] || { wins: 0 };
+      if (statsB.wins !== statsA.wins) {
+        return statsB.wins - statsA.wins;
+      }
+      return a.id.localeCompare(b.id);
+    });
   
-  // Determinar seeds do bracket (top 16, ou todas se menos de 16)
+  // Determinar seeds do bracket (top K, potência de 2)
   const bracketSize = Math.min(16, Math.pow(2, Math.floor(Math.log2(ranked.length))));
   const seeds = ranked.slice(0, bracketSize);
   
@@ -3503,7 +3526,7 @@ async function finishQualifyingAndStartBracket() {
   
   saveContestState();
   
-  toast(`🏆 Fase Classificatória finalizada! Top ${bracketSize} avançam para o Bracket Final.`);
+  toast(`🏆 Fase Classificatória finalizada! Elo e scores congelados. Top ${bracketSize} avançam para o Bracket Final.`);
   await new Promise(resolve => setTimeout(resolve, 1500));
   
   await renderBattle();
