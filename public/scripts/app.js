@@ -2281,7 +2281,11 @@ async function startContest() {
   );
   
   saveContestState();
-  renderBattle();
+  
+  // Aguardar um pouco para garantir que o estado foi salvo
+  await new Promise(resolve => setTimeout(resolve, 100));
+  
+  await renderBattle();
   
   toast(`Contest iniciado! ${qualifiedPhotos.length} participantes. Fase Classificatória: ${totalBattles} batalhas no Round 1.`);
 }
@@ -2597,6 +2601,8 @@ async function renderBattle() {
  * Renderiza batalha da fase classificatória
  */
 async function renderQualifyingBattle() {
+  console.log('[DEBUG] renderQualifyingBattle INICIADO');
+  
   const container = $('#contestView');
   if (!container) {
     console.error('[DEBUG] renderQualifyingBattle: container não encontrado!');
@@ -2604,7 +2610,10 @@ async function renderQualifyingBattle() {
   }
   
   if (!contestState || !contestState.qualifying) {
-    console.error('[DEBUG] renderQualifyingBattle: contestState ou qualifying não existe!');
+    console.error('[DEBUG] renderQualifyingBattle: contestState ou qualifying não existe!', {
+      hasContestState: !!contestState,
+      hasQualifying: !!contestState?.qualifying
+    });
     await renderContestView();
     return;
   }
@@ -2612,6 +2621,7 @@ async function renderQualifyingBattle() {
   const { qualifying, eloScores, battleHistory, qualifiedPhotos } = contestState;
   
   console.log('[DEBUG] renderQualifyingBattle - qualifying:', qualifying);
+  console.log('[DEBUG] renderQualifyingBattle - bracket:', qualifying.bracket);
   
   // ========================================
   // NOVO SISTEMA: BRACKET
@@ -2691,27 +2701,13 @@ async function renderQualifyingBattle() {
   const photoA = currentMatch.photoA;
   const photoB = currentMatch.photoB;
   
-  // ========================================
-  // SISTEMA ANTERIOR (COMENTADO)
-  // ========================================
-  // console.log('[DEBUG] renderQualifyingBattle - currentMatch:', qualifying?.currentMatch);
-  // console.log('[DEBUG] renderQualifyingBattle - pendingMatches:', qualifying?.pendingMatches?.length);
-  // if (!qualifying.currentMatch && qualifying.pendingMatches && qualifying.pendingMatches.length > 0) {
-  //   qualifying.currentMatch = qualifying.pendingMatches.shift() || null;
-  // }
-  // const { currentMatch } = qualifying;
-  // if (!currentMatch) {
-  //   await finishQualifyingAndStartBracket();
-  //   return;
-  // }
-  // const photoA = currentMatch.photoA;
-  // const photoB = currentMatch.photoB;
+  console.log('[DEBUG] renderQualifyingBattle - photoA:', photoA?.id, 'photoB:', photoB?.id);
   
-  // Verificar se já batalharam (apenas na fase classificatória, não no bracket)
-  // No bracket, fotos podem batalhar novamente em rodadas diferentes
-  // IMPORTANTE: Só verificar se o usuário ainda não votou manualmente
-  // Se o usuário clicou, processar o voto normalmente (não usar confronto automático)
-  // O confronto automático só deve ser usado quando renderiza a batalha, não quando processa o voto
+  if (!photoA || !photoB) {
+    console.error('[DEBUG] renderQualifyingBattle: photoA ou photoB inválido!', { photoA, photoB });
+    await renderContestView();
+    return;
+  }
   
   // Calcular estatísticas (usar cache se disponível)
   const photoStats = calculatePhotoStats(qualifiedPhotos, eloScores, battleHistory, contestState.photoStats);
@@ -2719,6 +2715,14 @@ async function renderQualifyingBattle() {
   contestState.photoStats = photoStats;
   const statsA = photoStats[photoA.id];
   const statsB = photoStats[photoB.id];
+  
+  console.log('[DEBUG] renderQualifyingBattle - statsA:', statsA, 'statsB:', statsB);
+  
+  if (!statsA || !statsB) {
+    console.error('[DEBUG] renderQualifyingBattle: statsA ou statsB não encontrado!');
+    await renderContestView();
+    return;
+  }
   
   // Obter scores e tiers
   const scoreA = contestState.scoresAndTiers[photoA.id] || { score: 50, tier: TIERS[4] };
