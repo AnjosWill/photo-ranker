@@ -2522,11 +2522,6 @@ async function renderQualifyingBattle() {
             <img src="${photoA.thumb}" alt="Foto A">
             <div class="battle-label">1</div>
             <div class="battle-info">
-              <div class="tier-badge">
-                <div class="tier-icon">${scoreA.tier.icon}</div>
-                <div class="tier-score">${scoreA.score}/100</div>
-                <div class="tier-label">${scoreA.tier.label}</div>
-              </div>
               <div class="battle-rank">#${statsA.rank} | ${statsA.wins}W-${statsA.losses}L</div>
             </div>
           </div>
@@ -2541,11 +2536,6 @@ async function renderQualifyingBattle() {
             <img src="${photoB.thumb}" alt="Foto B">
             <div class="battle-label">2</div>
             <div class="battle-info">
-              <div class="tier-badge">
-                <div class="tier-icon">${scoreB.tier.icon}</div>
-                <div class="tier-score">${scoreB.score}/100</div>
-                <div class="tier-label">${scoreB.tier.label}</div>
-              </div>
               <div class="battle-rank">#${statsB.rank} | ${statsB.wins}W-${statsB.losses}L</div>
             </div>
           </div>
@@ -2654,11 +2644,7 @@ async function renderBracketBattle() {
           <img src="${photoA.thumb}" alt="Foto A">
           <div class="battle-label">1</div>
           <div class="battle-info">
-            <div class="tier-badge">
-              <div class="tier-icon">${scoreA.tier.icon}</div>
-              <div class="tier-score">${scoreA.score}/100</div>
-              <div class="tier-label">${scoreA.tier.label}</div>
-            </div>
+            <!-- Tier badge removido - apenas no ranking -->
           </div>
         </div>
         
@@ -2672,11 +2658,7 @@ async function renderBracketBattle() {
           <img src="${photoB.thumb}" alt="Foto B">
           <div class="battle-label">2</div>
           <div class="battle-info">
-            <div class="tier-badge">
-              <div class="tier-icon">${scoreB.tier.icon}</div>
-              <div class="tier-score">${scoreB.score}/100</div>
-              <div class="tier-label">${scoreB.tier.label}</div>
-            </div>
+            <!-- Tier badge removido - apenas no ranking -->
           </div>
         </div>
       </div>

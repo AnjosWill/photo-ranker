@@ -1298,10 +1298,11 @@ body.selection-mode .split-btn {
 
 .battle-with-ranking {
   display: grid;
-  grid-template-columns: 1fr 280px;
-  gap: var(--gap-3);
-  max-width: 1600px;
+  grid-template-columns: 1fr 240px;
+  gap: var(--gap-2);
+  max-width: 1800px;
   margin: 0 auto;
+  padding: 0 var(--gap-2);
 }
 
 .dynamic-ranking {
@@ -1314,6 +1315,8 @@ body.selection-mode .split-btn {
   overflow-y: auto;
   position: sticky;
   top: var(--gap-4);
+  width: 240px;
+  flex-shrink: 0;
 }
 
 .dynamic-ranking h4 {
