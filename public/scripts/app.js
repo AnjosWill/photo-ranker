@@ -3169,9 +3169,12 @@ function renderRankingOverlay() {
                 }, 0)
               : 0;
             
+            // Usar rank calculado por W-L (do stats), não o índice do array
+            const displayRank = photo.stats?.rank || (idx + 1);
+            
             return `
             <div class="full-ranking-item ${idx < 3 ? 'top-' + (idx + 1) : ''}" data-photo-id="${photo.id}">
-              <span class="ranking-position-large">#${idx + 1}</span>
+              <span class="ranking-position-large">#${displayRank}</span>
               <img src="${photo.thumb}" alt="Foto" class="ranking-thumb-large">
               <div class="ranking-details-large">
                 <div class="tier-badge tier-badge-large">
