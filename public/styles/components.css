@@ -2531,15 +2531,39 @@ body.selection-mode .split-btn {
 
 /* Mobile: layout vertical */
 @media (max-width: 1024px) {
-  .battle-with-ranking {
-    grid-template-columns: 1fr;
+  .contest-battle {
+    padding-right: var(--gap-4);
   }
   
-  .dynamic-ranking {
-    max-height: 250px;
-    order: -1;
+  .dynamic-ranking-sidebar {
     position: relative;
-    top: 0;
+    right: auto;
+    top: auto;
+    transform: none;
+    width: 100%;
+    max-height: 300px;
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    margin-top: var(--gap-4);
+  }
+  
+  .battle-container-full {
+    grid-template-columns: 1fr;
+    gap: var(--gap-2);
+  }
+  
+  .battle-container-full .battle-photo {
+    max-height: 60vh;
+    min-height: 400px;
+  }
+  
+  .battle-container-full .battle-photo img {
+    max-height: 60vh;
+    min-height: 400px;
+  }
+  
+  .battle-vs {
+    order: -1;
   }
 }
 
