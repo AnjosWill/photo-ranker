@@ -2628,6 +2628,10 @@ async function renderQualifyingBattle() {
   // ========================================
   const bracket = qualifying.bracket;
   
+  console.log('[DEBUG] renderQualifyingBattle - bracket:', bracket);
+  console.log('[DEBUG] renderQualifyingBattle - bracket.rounds:', bracket?.rounds);
+  console.log('[DEBUG] renderQualifyingBattle - bracket.currentRound:', bracket?.currentRound);
+  
   // Se não há bracket (estado antigo), tentar migrar ou resetar
   if (!bracket || !bracket.rounds || bracket.rounds.length === 0) {
     console.warn('[DEBUG] renderQualifyingBattle: bracket não encontrado! Estado antigo detectado.');
@@ -2647,15 +2651,38 @@ async function renderQualifyingBattle() {
     return;
   }
   
+  // Validar currentRound está dentro do range
+  if (bracket.currentRound < 0 || bracket.currentRound >= bracket.rounds.length) {
+    console.error('[DEBUG] renderQualifyingBattle: currentRound fora do range!', {
+      currentRound: bracket.currentRound,
+      totalRounds: bracket.rounds.length,
+      rounds: bracket.rounds.map((r, i) => ({ index: i, round: r.round, type: r.type, matches: r.matches?.length || 0 }))
+    });
+    // Resetar para o primeiro round
+    bracket.currentRound = 0;
+    bracket.currentMatchIndex = 0;
+    console.log('[DEBUG] Resetando para Round 1');
+  }
+  
   // Pegar round atual
   const currentRound = bracket.rounds[bracket.currentRound];
   if (!currentRound) {
     console.error('[DEBUG] renderQualifyingBattle: currentRound não encontrado!', {
       currentRound: bracket.currentRound,
-      totalRounds: bracket.rounds.length
+      totalRounds: bracket.rounds.length,
+      rounds: bracket.rounds
     });
-    await renderContestView();
-    return;
+    // Tentar resetar para o primeiro round
+    if (bracket.rounds.length > 0) {
+      bracket.currentRound = 0;
+      bracket.currentMatchIndex = 0;
+      console.log('[DEBUG] Resetando para Round 1 e tentando novamente');
+      await renderQualifyingBattle();
+      return;
+    } else {
+      await renderContestView();
+      return;
+    }
   }
   
   if (!currentRound.matches || currentRound.matches.length === 0) {
