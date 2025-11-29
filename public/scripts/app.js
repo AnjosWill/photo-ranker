@@ -2365,8 +2365,11 @@ function renderBracket() {
       html += `<div class="bracket-slot ${photoAWon ? 'winner' : 'loser'}">`;
       html += `<img src="${photoA.thumb}" alt="Foto A" class="bracket-thumb">`;
       html += `<div class="bracket-info">`;
-      html += `<div class="bracket-score">${scoreA.score}/100 ${scoreA.tier.icon}</div>`;
-      html += `<div class="bracket-tier">${scoreA.tier.label}</div>`;
+      html += `<div class="tier-badge tier-badge-small">`;
+      html += `<div class="tier-icon">${scoreA.tier.icon}</div>`;
+      html += `<div class="tier-score">${scoreA.score}/100</div>`;
+      html += `<div class="tier-label">${scoreA.tier.label}</div>`;
+      html += `</div>`;
       if (photoAWon) html += '<span class="bracket-check">✓</span>';
       html += `</div></div>`;
       
@@ -2377,8 +2380,11 @@ function renderBracket() {
       html += `<div class="bracket-slot ${photoBWon ? 'winner' : 'loser'}">`;
       html += `<img src="${photoB.thumb}" alt="Foto B" class="bracket-thumb">`;
       html += `<div class="bracket-info">`;
-      html += `<div class="bracket-score">${scoreB.score}/100 ${scoreB.tier.icon}</div>`;
-      html += `<div class="bracket-tier">${scoreB.tier.label}</div>`;
+      html += `<div class="tier-badge tier-badge-small">`;
+      html += `<div class="tier-icon">${scoreB.tier.icon}</div>`;
+      html += `<div class="tier-score">${scoreB.score}/100</div>`;
+      html += `<div class="tier-label">${scoreB.tier.label}</div>`;
+      html += `</div>`;
       if (photoBWon) html += '<span class="bracket-check">✓</span>';
       html += `</div></div>`;
       
@@ -2516,8 +2522,11 @@ async function renderQualifyingBattle() {
             <img src="${photoA.thumb}" alt="Foto A">
             <div class="battle-label">1</div>
             <div class="battle-info">
-              <div class="battle-score">${scoreA.score}/100 ${scoreA.tier.icon}</div>
-              <div class="battle-tier">${scoreA.tier.label}</div>
+              <div class="tier-badge">
+                <div class="tier-icon">${scoreA.tier.icon}</div>
+                <div class="tier-score">${scoreA.score}/100</div>
+                <div class="tier-label">${scoreA.tier.label}</div>
+              </div>
               <div class="battle-rank">#${statsA.rank} | ${statsA.wins}W-${statsA.losses}L</div>
             </div>
           </div>
@@ -2532,8 +2541,11 @@ async function renderQualifyingBattle() {
             <img src="${photoB.thumb}" alt="Foto B">
             <div class="battle-label">2</div>
             <div class="battle-info">
-              <div class="battle-score">${scoreB.score}/100 ${scoreB.tier.icon}</div>
-              <div class="battle-tier">${scoreB.tier.label}</div>
+              <div class="tier-badge">
+                <div class="tier-icon">${scoreB.tier.icon}</div>
+                <div class="tier-score">${scoreB.score}/100</div>
+                <div class="tier-label">${scoreB.tier.label}</div>
+              </div>
               <div class="battle-rank">#${statsB.rank} | ${statsB.wins}W-${statsB.losses}L</div>
             </div>
           </div>
@@ -2642,8 +2654,11 @@ async function renderBracketBattle() {
           <img src="${photoA.thumb}" alt="Foto A">
           <div class="battle-label">1</div>
           <div class="battle-info">
-            <div class="battle-score">${scoreA.score}/100 ${scoreA.tier.icon}</div>
-            <div class="battle-tier">${scoreA.tier.label}</div>
+            <div class="tier-badge">
+              <div class="tier-icon">${scoreA.tier.icon}</div>
+              <div class="tier-score">${scoreA.score}/100</div>
+              <div class="tier-label">${scoreA.tier.label}</div>
+            </div>
           </div>
         </div>
         
@@ -2657,8 +2672,11 @@ async function renderBracketBattle() {
           <img src="${photoB.thumb}" alt="Foto B">
           <div class="battle-label">2</div>
           <div class="battle-info">
-            <div class="battle-score">${scoreB.score}/100 ${scoreB.tier.icon}</div>
-            <div class="battle-tier">${scoreB.tier.label}</div>
+            <div class="tier-badge">
+              <div class="tier-icon">${scoreB.tier.icon}</div>
+              <div class="tier-score">${scoreB.score}/100</div>
+              <div class="tier-label">${scoreB.tier.label}</div>
+            </div>
           </div>
         </div>
       </div>
@@ -2741,8 +2759,11 @@ function renderDynamicRanking(photos, photoStats) {
         <span class="ranking-position">#${rank}</span>
         <img src="${photo.thumb}" alt="Foto" class="ranking-thumb">
         <div class="ranking-details">
-          <div class="ranking-score">${score}/100 ${tier.icon}</div>
-          <div class="ranking-tier">${tier.label}</div>
+          <div class="tier-badge tier-badge-small">
+            <div class="tier-icon">${tier.icon}</div>
+            <div class="tier-score">${score}/100</div>
+            <div class="tier-label">${tier.label}</div>
+          </div>
           <div class="ranking-record">${wins}W-${losses}L</div>
         </div>
       </div>
@@ -2835,8 +2856,11 @@ function renderRankingOverlay() {
               <span class="ranking-position-large">#${idx + 1}</span>
               <img src="${photo.thumb}" alt="Foto" class="ranking-thumb-large">
               <div class="ranking-details-large">
-                <div class="ranking-score-large">${score}/100 ${tier.icon}</div>
-                <div class="ranking-tier-large">${tier.label}</div>
+                <div class="tier-badge tier-badge-large">
+                  <div class="tier-icon">${tier.icon}</div>
+                  <div class="tier-score">${score}/100</div>
+                  <div class="tier-label">${tier.label}</div>
+                </div>
                 <div class="ranking-record-large">${photo.stats.wins}W - ${photo.stats.losses}L</div>
                 ${recentBattles.length > 0 ? `<div class="ranking-change">${scoreChange > 0 ? '+' : ''}${Math.round(scoreChange)} score</div>` : ''}
               </div>
@@ -2904,7 +2928,11 @@ function renderBracketPreview() {
       html += `<img src="${match.photoB.thumb}" class="preview-thumb">`;
       html += `<div class="preview-seed-info">`;
       html += `<div class="preview-seed">#${seedB}</div>`;
-      html += `<div class="preview-score">${scoreB.score}/100 ${scoreB.tier.icon}</div>`;
+      html += `<div class="tier-badge tier-badge-small">`;
+      html += `<div class="tier-icon">${scoreB.tier.icon}</div>`;
+      html += `<div class="tier-score">${scoreB.score}/100</div>`;
+      html += `<div class="tier-label">${scoreB.tier.label}</div>`;
+      html += `</div>`;
       html += `</div>`;
       html += `</div>`;
     });
@@ -3096,8 +3124,11 @@ function renderBracketTree() {
       html += `<div class="tree-slot ${photoBWon ? 'winner' : ''} ${photoAWon ? 'loser' : ''}">`;
       html += `<img src="${photoB.thumb}" alt="Foto B" class="tree-thumb">`;
       html += `<div class="tree-info">`;
-      html += `<div class="tree-score">${scoreB.score}/100 ${scoreB.tier.icon}</div>`;
-      html += `<div class="tree-tier">${scoreB.tier.label}</div>`;
+      html += `<div class="tier-badge tier-badge-small">`;
+      html += `<div class="tier-icon">${scoreB.tier.icon}</div>`;
+      html += `<div class="tier-score">${scoreB.score}/100</div>`;
+      html += `<div class="tier-label">${scoreB.tier.label}</div>`;
+      html += `</div>`;
       if (battle) {
         html += `<div class="tree-votes">${votePercentB}% (${votesB} votos)</div>`;
         if (battle.eloChange && !contestState.frozen) {
