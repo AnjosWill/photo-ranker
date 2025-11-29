@@ -1760,7 +1760,12 @@ function initContestView() {
  */
 async function renderContestView() {
   const container = $('#contestView');
-  if (!container) return;
+  if (!container) {
+    console.error('[DEBUG] contestView container não encontrado!');
+    return;
+  }
+  
+  console.log('[DEBUG] renderContestView chamado');
   
   // Carregar fotos atualizadas
   allPhotos = await getAllPhotos();
@@ -1771,13 +1776,16 @@ async function renderContestView() {
   
   // Verificar se há contest ativo
   if (contestState && (contestState.phase === 'qualifying' || contestState.phase === 'bracket')) {
-    renderBattle();
+    console.log('[DEBUG] Contest ativo encontrado, renderizando batalha');
+    await renderBattle();
     return;
   }
   
   // Estado inicial: sem contest ativo
   const qualifiedPhotos = visiblePhotos.filter(p => p.rating === 5);
   const qualifiedCount = qualifiedPhotos.length;
+  
+  console.log('[DEBUG] Renderizando estado inicial, qualifiedCount:', qualifiedCount);
   
   container.innerHTML = `
     <div class="contest-empty">
@@ -1809,6 +1817,8 @@ async function renderContestView() {
   if (startBtn && !startBtn.disabled) {
     startBtn.addEventListener('click', startContest);
   }
+  
+  console.log('[DEBUG] renderContestView concluído');
 }
 
 /**
