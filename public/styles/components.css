@@ -1587,6 +1587,17 @@ body.selection-mode .split-btn {
 }
 
 /* Mobile: layout vertical */
+@media (max-width: 1024px) {
+  .battle-with-ranking {
+    grid-template-columns: 1fr;
+  }
+  
+  .dynamic-ranking {
+    max-height: 300px;
+    order: -1;
+  }
+}
+
 @media (max-width: 600px) {
   .battle-container {
     grid-template-columns: 1fr;
@@ -1604,6 +1615,19 @@ body.selection-mode .split-btn {
     height: 56px;
   }
   
+  .battle-info {
+    font-size: 12px;
+    padding: 6px 12px;
+  }
+  
+  .battle-elo {
+    font-size: 14px;
+  }
+  
+  .battle-rank {
+    font-size: 10px;
+  }
+  
   .bracket-diagram {
     flex-direction: column;
     gap: var(--gap-4);
@@ -1617,6 +1641,20 @@ body.selection-mode .split-btn {
   
   .bracket-arrow {
     display: none; /* Esconde flechas em mobile */
+  }
+  
+  .dynamic-ranking {
+    max-height: 200px;
+  }
+  
+  .ranking-thumb {
+    width: 40px;
+    height: 40px;
+  }
+  
+  .ranking-position {
+    font-size: 16px;
+    min-width: 30px;
   }
 }
 
