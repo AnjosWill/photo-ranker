@@ -76,13 +76,47 @@ export function calculateEloRange(eloScores) {
 }
 
 /**
+ * Calcula score baseado em W-L ratio (vitórias / total de batalhas)
+ * @param {number} wins - Número de vitórias
+ * @param {number} losses - Número de derrotas
+ * @returns {number} Score 0-100 baseado em W-L
+ */
+export function calculateWLScore(wins, losses) {
+  const total = wins + losses;
+  if (total === 0) return 50; // Sem batalhas = score neutro
+  
+  const winRate = wins / total;
+  // Normalizar para 0-100: 0% = 0, 50% = 50, 100% = 100
+  return Math.round(winRate * 100);
+}
+
+/**
+ * Calcula score híbrido combinando Elo e W-L
+ * @param {number} eloScore - Score baseado em Elo (0-100)
+ * @param {number} wlScore - Score baseado em W-L (0-100)
+ * @param {number} eloWeight - Peso do Elo (0-1, padrão: 0.3)
+ * @param {number} wlWeight - Peso do W-L (0-1, padrão: 0.7)
+ * @returns {number} Score híbrido 0-100
+ */
+export function calculateHybridScore(eloScore, wlScore, eloWeight = 0.3, wlWeight = 0.7) {
+  const hybrid = (eloScore * eloWeight) + (wlScore * wlWeight);
+  return Math.max(0, Math.min(100, Math.round(hybrid)));
+}
+
+/**
  * Calcula score e tier para todas as fotos
+ * 
+ * FASE CLASSIFICATÓRIA: Score = Elo normalizado (0-100)
+ * FASE FINAL: Score = Híbrido (30% Elo + 70% W-L) - reflete performance real
+ * 
  * @param {Object} eloScores - { photoId: elo, ... }
+ * @param {Object} photoStats - { photoId: {wins, losses}, ... } (opcional, necessário para fase final)
  * @param {number} minElo - Elo mínimo (opcional, calcula se não fornecido)
  * @param {number} maxElo - Elo máximo (opcional, calcula se não fornecido)
+ * @param {boolean} useHybrid - Se true, usa score híbrido (Elo + W-L) para fase final
  * @returns {Object} { photoId: {score, tier}, ... }
  */
-export function calculateScoresAndTiers(eloScores, minElo = null, maxElo = null) {
+export function calculateScoresAndTiers(eloScores, photoStats = null, minElo = null, maxElo = null, useHybrid = false) {
   const range = minElo !== null && maxElo !== null 
     ? { min: minElo, max: maxElo }
     : calculateEloRange(eloScores);
@@ -90,11 +124,24 @@ export function calculateScoresAndTiers(eloScores, minElo = null, maxElo = null)
   const result = {};
   
   Object.entries(eloScores).forEach(([photoId, elo]) => {
-    const score = normalizeEloToScore(elo, range.min, range.max);
-    const tier = getTierFromScore(score);
+    const eloScore = normalizeEloToScore(elo, range.min, range.max);
+    
+    let finalScore;
+    if (useHybrid && photoStats && photoStats[photoId]) {
+      // FASE FINAL: Score híbrido (Elo + W-L)
+      // W-L tem mais peso (70%) porque reflete performance real na fase final
+      const stats = photoStats[photoId];
+      const wlScore = calculateWLScore(stats.wins, stats.losses);
+      finalScore = calculateHybridScore(eloScore, wlScore, 0.3, 0.7);
+    } else {
+      // FASE CLASSIFICATÓRIA: Score baseado apenas em Elo
+      finalScore = eloScore;
+    }
+    
+    const tier = getTierFromScore(finalScore);
     
     result[photoId] = {
-      score,
+      score: finalScore,
       tier,
       elo // Manter Elo interno para referência
     };

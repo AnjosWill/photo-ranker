@@ -2251,7 +2251,13 @@ async function startContest() {
   
   // Calcular range inicial e scores/tiers
   contestState.eloRange = calculateEloRange(eloScores);
-  contestState.scoresAndTiers = calculateScoresAndTiers(eloScores, contestState.eloRange.min, contestState.eloRange.max);
+  contestState.scoresAndTiers = calculateScoresAndTiers(
+    eloScores,
+    null, // photoStats não necessário na inicialização
+    contestState.eloRange.min,
+    contestState.eloRange.max,
+    false // useHybrid = false (só Elo na classificatória)
+  );
   
   saveContestState();
   renderBattle();
@@ -3866,11 +3872,14 @@ async function handleQualifyingBattle(winner) {
       console.log('[DEBUG] Elos atualizados:', contestState.eloScores[winnerId], contestState.eloScores[loserId]);
       
       // Atualizar range e scores/tiers
+      // FASE CLASSIFICATÓRIA: Score baseado apenas em Elo
       contestState.eloRange = calculateEloRange(contestState.eloScores);
       contestState.scoresAndTiers = calculateScoresAndTiers(
-        contestState.eloScores, 
-        contestState.eloRange.min, 
-        contestState.eloRange.max
+        contestState.eloScores,
+        null, // photoStats não necessário na classificatória
+        contestState.eloRange.min,
+        contestState.eloRange.max,
+        false // useHybrid = false (só Elo)
       );
     }
     
@@ -4204,8 +4213,24 @@ async function handleFinalBattle(winner) {
     });
   }
   
-  // IMPORTANTE: Na fase final, o score permanece congelado (não atualizar baseado em Elo)
-  // O ranking é determinado por W-L, não por Elo/score
+  // Recalcular stats para ter wins/losses atualizados
+  const photoStats = calculatePhotoStats(
+    final.finalPhotos,
+    contestState.eloScores,
+    contestState.battleHistory.filter(b => b.phase === 'final'),
+    contestState.photoStats
+  );
+  
+  // FASE FINAL: Recalcular scores baseados em W-L (híbrido: 30% Elo + 70% W-L)
+  // Isso garante que o score visual reflete a performance real (W-L) na fase final
+  contestState.eloRange = calculateEloRange(contestState.eloScores);
+  contestState.scoresAndTiers = calculateScoresAndTiers(
+    contestState.eloScores,
+    photoStats, // Passar stats para cálculo híbrido
+    contestState.eloRange.min,
+    contestState.eloRange.max,
+    true // useHybrid = true para fase final
+  );
   
   // Salvar no histórico
   contestState.battleHistory.push({
@@ -4539,8 +4564,10 @@ function loadContestState() {
       contestState.eloRange = calculateEloRange(contestState.eloScores);
       contestState.scoresAndTiers = calculateScoresAndTiers(
         contestState.eloScores,
+        null, // photoStats não disponível aqui (migration)
         contestState.eloRange.min,
-        contestState.eloRange.max
+        contestState.eloRange.max,
+        false // useHybrid = false (fallback)
       );
     }
     
@@ -4603,11 +4630,20 @@ async function renderResultsView() {
     return;
   }
   
-  // Calcular stats e scores/tiers
+  // Para contest finalizado, usar apenas fotos da fase final se disponível
+  // Caso contrário, usar todas as fotos qualificadas
+  const photosToRank = contestState.final?.finalPhotos || contestState.qualifiedPhotos;
+  
+  // Calcular stats considerando apenas batalhas da fase final (se houver)
+  // Para contest finalizado, queremos o W-L da fase final, não de todas as batalhas
+  const finalBattleHistory = contestState.final 
+    ? contestState.battleHistory.filter(b => b.phase === 'final')
+    : contestState.battleHistory;
+  
   const photoStats = calculatePhotoStats(
-    contestState.qualifiedPhotos, 
+    photosToRank, 
     contestState.eloScores, 
-    contestState.battleHistory,
+    finalBattleHistory,
     contestState.photoStats
   );
   
@@ -4615,18 +4651,19 @@ async function renderResultsView() {
   const statsWithRank = calculateRankingFromStats(photoStats, true);
   contestState.photoStats = statsWithRank;
   
-  // Garantir que scoresAndTiers existam
-  if (!contestState.scoresAndTiers || Object.keys(contestState.scoresAndTiers).length === 0) {
-    contestState.eloRange = calculateEloRange(contestState.eloScores);
-    contestState.scoresAndTiers = calculateScoresAndTiers(
-      contestState.eloScores,
-      contestState.eloRange.min,
-      contestState.eloRange.max
-    );
-  }
+  // Recalcular scores baseados em W-L (híbrido: 30% Elo + 70% W-L)
+  // Para contest finalizado, o score deve refletir a performance real (W-L)
+  contestState.eloRange = calculateEloRange(contestState.eloScores);
+  contestState.scoresAndTiers = calculateScoresAndTiers(
+    contestState.eloScores,
+    statsWithRank, // Passar stats para cálculo híbrido
+    contestState.eloRange.min,
+    contestState.eloRange.max,
+    true // useHybrid = true para contest finalizado
+  );
   
   // Gerar ranking ordenado por W-L (vitórias - perdas)
-  const ranking = [...contestState.qualifiedPhotos]
+  const ranking = [...photosToRank]
     .map(p => ({
       ...p,
       stats: statsWithRank[p.id],
