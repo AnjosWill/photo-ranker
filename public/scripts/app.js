@@ -3132,71 +3132,110 @@ async function chooseBattleWinner(winner) {
  * Processa batalha da fase classificatória
  */
 async function handleQualifyingBattle(winner) {
-  const { currentMatch, eloScores, qualifying } = contestState;
-  if (!currentMatch) return;
+  console.log('[DEBUG] handleQualifyingBattle iniciado');
   
-  const winnerPhoto = winner === 'A' ? currentMatch.photoA : currentMatch.photoB;
-  const loserPhoto = winner === 'A' ? currentMatch.photoB : currentMatch.photoA;
-  const winnerId = winnerPhoto.id;
-  const loserId = loserPhoto.id;
-  
-  // Calcular novos ratings
-  const winnerElo = eloScores[winnerId];
-  const loserElo = eloScores[loserId];
-  const result = calculateElo(winnerElo, loserElo, 32);
-  
-  // Atualizar scores
-  contestState.eloScores = updateEloScores(winnerId, loserId, contestState.eloScores, 32);
-  
-  // Atualizar histórico de Elo
-  const battleId = `battle-${Date.now()}`;
-  contestState.qualifying.eloHistory[winnerId].push({
-    elo: contestState.eloScores[winnerId],
-    timestamp: Date.now(),
-    battleId: battleId
-  });
-  contestState.qualifying.eloHistory[loserId].push({
-    elo: contestState.eloScores[loserId],
-    timestamp: Date.now(),
-    battleId: battleId
-  });
-  
-  // Salvar no histórico
-  contestState.battleHistory.push({
-    photoA: currentMatch.photoA.id,
-    photoB: currentMatch.photoB.id,
-    winner: winnerId,
-    timestamp: Date.now(),
-    eloChange: result.change,
-    phase: 'qualifying'
-  });
-  
-  // Feedback visual
-  const winnerElement = winner === 'A' ? $('#battlePhotoA') : $('#battlePhotoB');
-  if (winnerElement) {
-    winnerElement.style.borderColor = '#3ddc97';
-    winnerElement.style.transform = 'scale(1.05)';
+  try {
+    const { currentMatch, eloScores, qualifying } = contestState;
+    
+    if (!currentMatch) {
+      console.error('[DEBUG] currentMatch não existe!');
+      return;
+    }
+    
+    console.log('[DEBUG] currentMatch:', currentMatch);
+    
+    const winnerPhoto = winner === 'A' ? currentMatch.photoA : currentMatch.photoB;
+    const loserPhoto = winner === 'A' ? currentMatch.photoB : currentMatch.photoA;
+    const winnerId = winnerPhoto.id;
+    const loserId = loserPhoto.id;
+    
+    console.log('[DEBUG] Winner:', winnerId, 'Loser:', loserId);
+    
+    // Calcular novos ratings
+    const winnerElo = eloScores[winnerId] || 1500;
+    const loserElo = eloScores[loserId] || 1500;
+    console.log('[DEBUG] Elos antes:', { winnerElo, loserElo });
+    
+    const result = calculateElo(winnerElo, loserElo, 32);
+    console.log('[DEBUG] Resultado Elo:', result);
+    
+    // Atualizar scores
+    contestState.eloScores = updateEloScores(winnerId, loserId, contestState.eloScores, 32);
+    console.log('[DEBUG] Elos atualizados:', contestState.eloScores[winnerId], contestState.eloScores[loserId]);
+    
+    // Atualizar histórico de Elo
+    const battleId = `battle-${Date.now()}`;
+    if (!contestState.qualifying.eloHistory[winnerId]) {
+      contestState.qualifying.eloHistory[winnerId] = [];
+    }
+    if (!contestState.qualifying.eloHistory[loserId]) {
+      contestState.qualifying.eloHistory[loserId] = [];
+    }
+    
+    contestState.qualifying.eloHistory[winnerId].push({
+      elo: contestState.eloScores[winnerId],
+      timestamp: Date.now(),
+      battleId: battleId
+    });
+    contestState.qualifying.eloHistory[loserId].push({
+      elo: contestState.eloScores[loserId],
+      timestamp: Date.now(),
+      battleId: battleId
+    });
+    
+    // Salvar no histórico
+    contestState.battleHistory.push({
+      photoA: currentMatch.photoA.id,
+      photoB: currentMatch.photoB.id,
+      winner: winnerId,
+      timestamp: Date.now(),
+      eloChange: result.change,
+      phase: 'qualifying'
+    });
+    
+    console.log('[DEBUG] Batalha salva no histórico');
+    
+    // Feedback visual
+    const winnerElement = winner === 'A' ? $('#battlePhotoA') : $('#battlePhotoB');
+    if (winnerElement) {
+      winnerElement.style.borderColor = '#3ddc97';
+      winnerElement.style.transform = 'scale(1.05)';
+      console.log('[DEBUG] Feedback visual aplicado');
+    } else {
+      console.warn('[DEBUG] winnerElement não encontrado');
+    }
+    
+    toast(`Foto ${winner} venceu! ${result.change.winner > 0 ? '+' : ''}${result.change.winner} Elo`);
+    
+    // Avançar para próxima batalha
+    contestState.qualifying.completedBattles++;
+    console.log('[DEBUG] Batalhas completadas:', contestState.qualifying.completedBattles, '/', contestState.qualifying.totalBattles);
+    console.log('[DEBUG] Batalhas pendentes:', contestState.qualifying.pendingMatches.length);
+    
+    // Verificar se fase classificatória terminou
+    if (contestState.qualifying.completedBattles >= contestState.qualifying.totalBattles ||
+        contestState.qualifying.pendingMatches.length === 0) {
+      console.log('[DEBUG] Finalizando classificatória e iniciando bracket');
+      await finishQualifyingAndStartBracket();
+      return;
+    }
+    
+    // Próxima batalha da fila
+    contestState.qualifying.currentMatch = contestState.qualifying.pendingMatches.shift() || null;
+    console.log('[DEBUG] Próxima batalha:', contestState.qualifying.currentMatch);
+    
+    saveContestState();
+    console.log('[DEBUG] Estado salvo');
+    
+    await new Promise(resolve => setTimeout(resolve, 800));
+    console.log('[DEBUG] Chamando renderBattle()');
+    await renderBattle();
+    console.log('[DEBUG] renderBattle() concluído');
+    
+  } catch (error) {
+    console.error('[DEBUG] Erro em handleQualifyingBattle:', error);
+    console.error('[DEBUG] Stack:', error.stack);
   }
-  
-  toast(`Foto ${winner} venceu! ${result.change.winner > 0 ? '+' : ''}${result.change.winner} Elo`);
-  
-  // Avançar para próxima batalha
-  contestState.qualifying.completedBattles++;
-  
-  // Verificar se fase classificatória terminou
-  if (contestState.qualifying.completedBattles >= contestState.qualifying.totalBattles ||
-      contestState.qualifying.pendingMatches.length === 0) {
-    // Finalizar classificatória e iniciar bracket
-    await finishQualifyingAndStartBracket();
-    return;
-  }
-  
-  // Próxima batalha da fila
-  contestState.qualifying.currentMatch = contestState.qualifying.pendingMatches.shift() || null;
-  saveContestState();
-  
-  await new Promise(resolve => setTimeout(resolve, 800));
-  await renderBattle();
 }
 
 /**
