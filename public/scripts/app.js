@@ -2150,8 +2150,15 @@ async function startContest() {
     
     eloScores: eloScores,
     battleHistory: [],
-    photoStats: {} // Cache de stats para performance
+    photoStats: {}, // Cache de stats para performance
+    eloRange: { min: 1500, max: 1500 }, // Range inicial (todos começam iguais)
+    scoresAndTiers: {}, // Cache de scores e tiers
+    frozen: false // Se true, Elo e score estão congelados
   };
+  
+  // Calcular range inicial e scores/tiers
+  contestState.eloRange = calculateEloRange(eloScores);
+  contestState.scoresAndTiers = calculateScoresAndTiers(eloScores, contestState.eloRange.min, contestState.eloRange.max);
   
   saveContestState();
   renderBattle();
@@ -2479,8 +2486,10 @@ async function renderQualifyingBattle() {
   contestState.photoStats = photoStats;
   const statsA = photoStats[photoA.id];
   const statsB = photoStats[photoB.id];
-  const eloA = eloScores[photoA.id] || 1500;
-  const eloB = eloScores[photoB.id] || 1500;
+  
+  // Obter scores e tiers
+  const scoreA = contestState.scoresAndTiers[photoA.id] || { score: 50, tier: TIERS[4] };
+  const scoreB = contestState.scoresAndTiers[photoB.id] || { score: 50, tier: TIERS[4] };
   
   const progress = Math.round((qualifying.completedBattles / qualifying.totalBattles) * 100);
   
@@ -2609,8 +2618,10 @@ async function renderBracketBattle() {
   
   const photoA = currentMatch.photoA;
   const photoB = currentMatch.photoB;
-  const eloA = eloScores[photoA.id] || 1500;
-  const eloB = eloScores[photoB.id] || 1500;
+  
+  // Obter scores e tiers (usar valores congelados se frozen)
+  const scoreA = contestState.scoresAndTiers[photoA.id] || { score: 50, tier: TIERS[4] };
+  const scoreB = contestState.scoresAndTiers[photoB.id] || { score: 50, tier: TIERS[4] };
   
   container.innerHTML = `
     <div class="contest-battle">
@@ -2625,7 +2636,8 @@ async function renderBracketBattle() {
           <img src="${photoA.thumb}" alt="Foto A">
           <div class="battle-label">1</div>
           <div class="battle-info">
-            <div class="battle-elo">Power: ${Math.round(eloA)}</div>
+            <div class="battle-score">${scoreA.score}/100 ${scoreA.tier.icon}</div>
+            <div class="battle-tier">${scoreA.tier.label}</div>
           </div>
         </div>
         
@@ -2639,7 +2651,8 @@ async function renderBracketBattle() {
           <img src="${photoB.thumb}" alt="Foto B">
           <div class="battle-label">2</div>
           <div class="battle-info">
-            <div class="battle-elo">Power: ${Math.round(eloB)}</div>
+            <div class="battle-score">${scoreB.score}/100 ${scoreB.tier.icon}</div>
+            <div class="battle-tier">${scoreB.tier.label}</div>
           </div>
         </div>
       </div>
@@ -2697,17 +2710,33 @@ async function renderBracketBattle() {
  */
 function renderDynamicRanking(photos, photoStats) {
   const ranked = [...photos]
-    .map(p => ({ ...p, stats: photoStats[p.id] }))
-    .sort((a, b) => b.stats.elo - a.stats.elo);
+    .map(p => ({ 
+      ...p, 
+      stats: photoStats[p.id],
+      scoreData: contestState.scoresAndTiers[p.id] || { score: 50, tier: TIERS[4] }
+    }))
+    .sort((a, b) => {
+      // Ordenar por score (maior → menor)
+      if (b.scoreData.score !== a.scoreData.score) {
+        return b.scoreData.score - a.scoreData.score;
+      }
+      // Desempate: mais vitórias
+      if (b.stats.wins !== a.stats.wins) {
+        return b.stats.wins - a.stats.wins;
+      }
+      return a.id.localeCompare(b.id);
+    });
   
   return ranked.map((photo, index) => {
-    const { wins, losses, elo, rank } = photo.stats;
+    const { wins, losses, rank } = photo.stats;
+    const { score, tier } = photo.scoreData;
     return `
       <div class="ranking-item ${index < 3 ? 'top-' + (index + 1) : ''}">
         <span class="ranking-position">#${rank}</span>
         <img src="${photo.thumb}" alt="Foto" class="ranking-thumb">
         <div class="ranking-details">
-          <div class="ranking-elo">${Math.round(elo)}</div>
+          <div class="ranking-score">${score}/100 ${tier.icon}</div>
+          <div class="ranking-tier">${tier.label}</div>
           <div class="ranking-record">${wins}W-${losses}L</div>
         </div>
       </div>
@@ -2752,13 +2781,27 @@ function toggleOverlay(overlayId) {
 function renderRankingOverlay() {
   if (!contestState || contestState.phase !== 'qualifying') return '';
   
-  const { qualifiedPhotos, eloScores, battleHistory } = contestState;
+  const { qualifiedPhotos, eloScores, battleHistory, scoresAndTiers } = contestState;
   const photoStats = calculatePhotoStats(qualifiedPhotos, eloScores, battleHistory, contestState.photoStats);
   // Atualizar cache
   contestState.photoStats = photoStats;
   const ranked = [...qualifiedPhotos]
-    .map(p => ({ ...p, stats: photoStats[p.id] }))
-    .sort((a, b) => b.stats.elo - a.stats.elo);
+    .map(p => ({ 
+      ...p, 
+      stats: photoStats[p.id],
+      scoreData: scoresAndTiers[p.id] || { score: 50, tier: TIERS[4] }
+    }))
+    .sort((a, b) => {
+      // Ordenar por score (maior → menor)
+      if (b.scoreData.score !== a.scoreData.score) {
+        return b.scoreData.score - a.scoreData.score;
+      }
+      // Desempate: mais vitórias
+      if (b.stats.wins !== a.stats.wins) {
+        return b.stats.wins - a.stats.wins;
+      }
+      return a.id.localeCompare(b.id);
+    });
   
   return `
     <div class="contest-overlay" id="rankingOverlay" aria-hidden="true">
@@ -2768,19 +2811,35 @@ function renderRankingOverlay() {
       </div>
       <div class="overlay-content">
         <div class="full-ranking-list">
-          ${ranked.map((photo, idx) => `
+          ${ranked.map((photo, idx) => {
+            const { score, tier } = photo.scoreData;
+            // Calcular variação de score (últimas 3 batalhas)
+            const recentBattles = battleHistory
+              .filter(b => b.photoA === photo.id || b.photoB === photo.id)
+              .slice(-3);
+            const scoreChange = recentBattles.length > 0 
+              ? recentBattles.reduce((sum, b) => {
+                  const isWinner = b.winner === photo.id;
+                  return sum + (isWinner ? (b.eloChange?.winner || 0) : (b.eloChange?.loser || 0));
+                }, 0)
+              : 0;
+            
+            return `
             <div class="full-ranking-item ${idx < 3 ? 'top-' + (idx + 1) : ''}" data-photo-id="${photo.id}">
               <span class="ranking-position-large">#${idx + 1}</span>
               <img src="${photo.thumb}" alt="Foto" class="ranking-thumb-large">
               <div class="ranking-details-large">
-                <div class="ranking-power">Power Level: ${Math.round(photo.stats.elo)}</div>
+                <div class="ranking-score-large">${score}/100 ${tier.icon}</div>
+                <div class="ranking-tier-large">${tier.label}</div>
                 <div class="ranking-record-large">${photo.stats.wins}W - ${photo.stats.losses}L</div>
+                ${recentBattles.length > 0 ? `<div class="ranking-change">${scoreChange > 0 ? '+' : ''}${Math.round(scoreChange)} score</div>` : ''}
               </div>
               <button class="btn-view-details" data-photo-id="${photo.id}" onclick="showPhotoDetails('${photo.id}')">
                 Ver Detalhes
               </button>
             </div>
-          `).join('')}
+          `;
+          }).join('')}
         </div>
       </div>
     </div>
@@ -2960,8 +3019,8 @@ function renderBracketTree() {
       const isCurrentMatch = isCurrentRound && matchIdx === bracket.currentMatchIndex;
       const photoA = match.photoA;
       const photoB = match.photoB;
-      const eloA = eloScores[photoA.id] || 1500;
-      const eloB = eloScores[photoB.id] || 1500;
+      const scoreA = contestState.scoresAndTiers[photoA.id] || { score: 50, tier: TIERS[4] };
+      const scoreB = contestState.scoresAndTiers[photoB.id] || { score: 50, tier: TIERS[4] };
       
       // Buscar resultado se já foi decidido
       const battle = battleHistory.find(b => 
@@ -2986,12 +3045,19 @@ function renderBracketTree() {
       html += `<div class="tree-slot ${photoAWon ? 'winner' : ''} ${photoBWon ? 'loser' : ''}">`;
       html += `<img src="${photoA.thumb}" alt="Foto A" class="tree-thumb">`;
       html += `<div class="tree-info">`;
-      html += `<div class="tree-power">${Math.round(eloA)}</div>`;
+      html += `<div class="tree-score">${scoreA.score}/100 ${scoreA.tier.icon}</div>`;
+      html += `<div class="tree-tier">${scoreA.tier.label}</div>`;
       if (battle) {
         html += `<div class="tree-votes">${votePercentA}% (${votesA} votos)</div>`;
-        if (battle.eloChange) {
-          const changeA = photoAWon ? battle.eloChange.winner : battle.eloChange.loser;
-          html += `<div class="tree-elo-change ${changeA > 0 ? 'positive' : 'negative'}">${changeA > 0 ? '+' : ''}${changeA}</div>`;
+        if (battle.eloChange && !contestState.frozen) {
+          // Calcular variação de score se não estiver congelado
+          const eloChangeA = photoAWon ? battle.eloChange.winner : battle.eloChange.loser;
+          const eloBeforeA = (eloScores[photoA.id] || 1500) - eloChangeA;
+          const eloAfterA = eloScores[photoA.id] || 1500;
+          const scoreBeforeA = normalizeEloToScore(eloBeforeA, contestState.eloRange.min, contestState.eloRange.max);
+          const scoreAfterA = normalizeEloToScore(eloAfterA, contestState.eloRange.min, contestState.eloRange.max);
+          const scoreChangeA = scoreAfterA - scoreBeforeA;
+          html += `<div class="tree-score-change ${scoreChangeA > 0 ? 'positive' : 'negative'}">${scoreChangeA > 0 ? '+' : ''}${Math.round(scoreChangeA)} score</div>`;
         }
       }
       if (photoAWon) html += '<span class="tree-check">✓</span>';
@@ -3003,12 +3069,19 @@ function renderBracketTree() {
       html += `<div class="tree-slot ${photoBWon ? 'winner' : ''} ${photoAWon ? 'loser' : ''}">`;
       html += `<img src="${photoB.thumb}" alt="Foto B" class="tree-thumb">`;
       html += `<div class="tree-info">`;
-      html += `<div class="tree-power">${Math.round(eloB)}</div>`;
+      html += `<div class="tree-score">${scoreB.score}/100 ${scoreB.tier.icon}</div>`;
+      html += `<div class="tree-tier">${scoreB.tier.label}</div>`;
       if (battle) {
         html += `<div class="tree-votes">${votePercentB}% (${votesB} votos)</div>`;
-        if (battle.eloChange) {
-          const changeB = photoBWon ? battle.eloChange.winner : battle.eloChange.loser;
-          html += `<div class="tree-elo-change ${changeB > 0 ? 'positive' : 'negative'}">${changeB > 0 ? '+' : ''}${changeB}</div>`;
+        if (battle.eloChange && !contestState.frozen) {
+          // Calcular variação de score se não estiver congelado
+          const eloChangeB = photoBWon ? battle.eloChange.winner : battle.eloChange.loser;
+          const eloBeforeB = (eloScores[photoB.id] || 1500) - eloChangeB;
+          const eloAfterB = eloScores[photoB.id] || 1500;
+          const scoreBeforeB = normalizeEloToScore(eloBeforeB, contestState.eloRange.min, contestState.eloRange.max);
+          const scoreAfterB = normalizeEloToScore(eloAfterB, contestState.eloRange.min, contestState.eloRange.max);
+          const scoreChangeB = scoreAfterB - scoreBeforeB;
+          html += `<div class="tree-score-change ${scoreChangeB > 0 ? 'positive' : 'negative'}">${scoreChangeB > 0 ? '+' : ''}${Math.round(scoreChangeB)} score</div>`;
         }
       }
       if (photoBWon) html += '<span class="tree-check">✓</span>';
@@ -3059,7 +3132,7 @@ window.showPhotoDetails = function(photoId) {
   const photo = contestState.qualifiedPhotos.find(p => p.id === photoId);
   if (!photo) return;
   
-  const { eloScores, battleHistory, qualifying } = contestState;
+  const { eloScores, battleHistory, qualifying, scoresAndTiers, eloRange } = contestState;
   const eloHistory = qualifying?.eloHistory?.[photoId] || [];
   const photoBattles = battleHistory.filter(b => 
     b.photoA === photoId || b.photoB === photoId
@@ -3067,6 +3140,14 @@ window.showPhotoDetails = function(photoId) {
   
   const photoStats = calculatePhotoStats([photo], eloScores, battleHistory, contestState.photoStats);
   const stats = photoStats[photoId];
+  const scoreData = scoresAndTiers[photoId] || { score: 50, tier: TIERS[4] };
+  
+  // Converter eloHistory para scoreHistory
+  const scoreHistory = eloHistory.map(h => ({
+    score: normalizeEloToScore(h.elo, eloRange.min, eloRange.max),
+    timestamp: h.timestamp,
+    battleId: h.battleId
+  }));
   
   // Criar modal de detalhes
   const modal = document.createElement('div');
@@ -3082,7 +3163,10 @@ window.showPhotoDetails = function(photoId) {
           <img src="${photo.thumb}" alt="Foto" class="details-main-image">
           <div class="details-stats">
             <div class="stat-item">
-              <strong>Power Level Atual:</strong> ${Math.round(eloScores[photoId] || 1500)}
+              <strong>Score:</strong> ${scoreData.score}/100 ${scoreData.tier.icon}
+            </div>
+            <div class="stat-item">
+              <strong>Tier:</strong> ${scoreData.tier.label}
             </div>
             <div class="stat-item">
               <strong>Ranking:</strong> #${stats?.rank || 'N/A'}
@@ -3094,14 +3178,14 @@ window.showPhotoDetails = function(photoId) {
         </div>
         
         <div class="details-section">
-          <h4>Evolução do Power Level</h4>
-          <canvas id="eloChart-${photoId}" width="800" height="200"></canvas>
+          <h4>Evolução do Score</h4>
+          <canvas id="scoreChart-${photoId}" width="800" height="200"></canvas>
         </div>
         
         <div class="details-section">
           <h4>Histórico de Batalhas</h4>
           <div class="battle-timeline">
-            ${renderBattleTimeline(photoId, photoBattles, eloScores)}
+            ${renderBattleTimeline(photoId, photoBattles, eloScores, scoresAndTiers, eloRange)}
           </div>
         </div>
       </div>
@@ -3112,19 +3196,19 @@ window.showPhotoDetails = function(photoId) {
   
   // Renderizar gráfico
   setTimeout(() => {
-    renderEloChart(`eloChart-${photoId}`, eloHistory);
+    renderScoreChart(`scoreChart-${photoId}`, scoreHistory);
   }, 100);
 }
 
 /**
- * Renderiza gráfico de evolução Elo
+ * Renderiza gráfico de evolução do Score (0-100)
  */
-function renderEloChart(canvasId, eloHistory) {
+function renderScoreChart(canvasId, scoreHistory) {
   const canvas = $(canvasId);
   if (!canvas) return;
   
   // Se histórico insuficiente, mostrar mensagem
-  if (eloHistory.length < 2) {
+  if (scoreHistory.length < 2) {
     const ctx = canvas.getContext('2d');
     ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
     ctx.font = '16px sans-serif';
@@ -3141,13 +3225,12 @@ function renderEloChart(canvasId, eloHistory) {
   // Limpar canvas
   ctx.clearRect(0, 0, width, height);
   
-  // Calcular escala
-  const elos = eloHistory.map(h => h.elo);
-  const minElo = Math.min(...elos);
-  const maxElo = Math.max(...elos);
-  const range = maxElo - minElo || 100;
+  // Calcular escala (sempre 0-100)
+  const minScore = 0;
+  const maxScore = 100;
+  const range = maxScore - minScore;
   const scaleY = (height - padding * 2) / range;
-  const scaleX = (width - padding * 2) / (eloHistory.length - 1);
+  const scaleX = (width - padding * 2) / (scoreHistory.length - 1);
   
   // Desenhar eixos
   ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
@@ -3163,9 +3246,9 @@ function renderEloChart(canvasId, eloHistory) {
   ctx.lineWidth = 3;
   ctx.beginPath();
   
-  eloHistory.forEach((point, idx) => {
+  scoreHistory.forEach((point, idx) => {
     const x = padding + idx * scaleX;
-    const y = height - padding - (point.elo - minElo) * scaleY;
+    const y = height - padding - (point.score - minScore) * scaleY;
     
     if (idx === 0) {
       ctx.moveTo(x, y);
@@ -3178,33 +3261,68 @@ function renderEloChart(canvasId, eloHistory) {
   
   // Desenhar pontos
   ctx.fillStyle = '#6aa3ff';
-  eloHistory.forEach((point, idx) => {
+  scoreHistory.forEach((point, idx) => {
     const x = padding + idx * scaleX;
-    const y = height - padding - (point.elo - minElo) * scaleY;
+    const y = height - padding - (point.score - minScore) * scaleY;
     
     ctx.beginPath();
     ctx.arc(x, y, 4, 0, Math.PI * 2);
     ctx.fill();
   });
   
-  // Labels
+  // Labels do eixo Y (0, 25, 50, 75, 100)
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+  ctx.font = '10px sans-serif';
+  ctx.textAlign = 'right';
+  [0, 25, 50, 75, 100].forEach(score => {
+    const y = height - padding - (score - minScore) * scaleY;
+    ctx.fillText(score.toString(), padding - 5, y + 3);
+  });
+  
+  // Label do eixo X
   ctx.fillStyle = '#fff';
   ctx.font = '12px sans-serif';
   ctx.textAlign = 'center';
-  ctx.fillText('Power Level', width / 2, height - 10);
+  ctx.fillText('Score (0-100)', width / 2, height - 10);
 }
 
 /**
  * Renderiza timeline de batalhas
  */
-function renderBattleTimeline(photoId, battles, eloScores) {
-  return battles.map((battle, idx) => {
+function renderBattleTimeline(photoId, battles, eloScores, scoresAndTiers = null, eloRange = null) {
+  // Ordenar por timestamp (mais antiga → mais recente)
+  const sortedBattles = [...battles].sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+  
+  return sortedBattles.map((battle, idx) => {
     const opponentId = battle.photoA === photoId ? battle.photoB : battle.photoA;
     const opponent = contestState.qualifiedPhotos.find(p => p.id === opponentId);
     const won = battle.winner === photoId;
-    const eloChange = won ? battle.eloChange.winner : battle.eloChange.loser;
-    const eloBefore = (eloScores[photoId] || 1500) - eloChange;
-    const eloAfter = eloScores[photoId] || 1500;
+    
+    // Calcular variação de score
+    let scoreBefore = 50;
+    let scoreAfter = 50;
+    let scoreChange = 0;
+    
+    if (eloRange && scoresAndTiers && battle.eloChange) {
+      // Calcular Elo antes e depois
+      const eloChange = won 
+        ? (battle.eloChange?.winner || 0)
+        : (battle.eloChange?.loser || 0);
+      const eloBefore = (eloScores[photoId] || 1500) - eloChange;
+      const eloAfter = eloScores[photoId] || 1500;
+      
+      // Converter para score
+      scoreBefore = normalizeEloToScore(eloBefore, eloRange.min, eloRange.max);
+      scoreAfter = normalizeEloToScore(eloAfter, eloRange.min, eloRange.max);
+      scoreChange = scoreAfter - scoreBefore;
+    } else {
+      // Fallback: usar score atual
+      const currentScore = scoresAndTiers?.[photoId]?.score || 50;
+      scoreAfter = currentScore;
+      scoreBefore = currentScore;
+    }
+    
+    const tierAfter = getTierFromScore(scoreAfter);
     
     return `
       <div class="timeline-item ${won ? 'won' : 'lost'}">
@@ -3218,12 +3336,12 @@ function renderBattleTimeline(photoId, battles, eloScores) {
             <img src="${opponent?.thumb || ''}" alt="Oponente" class="timeline-opponent-thumb">
             <span>vs ${opponentId}</span>
           </div>
-          <div class="timeline-elo">
-            <span class="elo-before">${Math.round(eloBefore)}</span>
-            <span class="elo-arrow">→</span>
-            <span class="elo-after">${Math.round(eloAfter)}</span>
-            <span class="elo-change ${eloChange > 0 ? 'positive' : 'negative'}">
-              (${eloChange > 0 ? '+' : ''}${Math.round(eloChange)})
+          <div class="timeline-score">
+            <span class="score-before">${scoreBefore}/100</span>
+            <span class="score-arrow">→</span>
+            <span class="score-after">${scoreAfter}/100 ${tierAfter.icon}</span>
+            <span class="score-change ${scoreChange > 0 ? 'positive' : 'negative'}">
+              (${scoreChange > 0 ? '+' : ''}${Math.round(scoreChange)})
             </span>
           </div>
         </div>
@@ -3359,9 +3477,19 @@ async function handleQualifyingBattle(winner) {
     const result = calculateElo(winnerElo, loserElo, 32);
     console.log('[DEBUG] Resultado Elo:', result);
     
-    // Atualizar scores
-    contestState.eloScores = updateEloScores(winnerId, loserId, contestState.eloScores, 32);
-    console.log('[DEBUG] Elos atualizados:', contestState.eloScores[winnerId], contestState.eloScores[loserId]);
+    // Atualizar scores (se não estiver congelado)
+    if (!contestState.frozen) {
+      contestState.eloScores = updateEloScores(winnerId, loserId, contestState.eloScores, 32);
+      console.log('[DEBUG] Elos atualizados:', contestState.eloScores[winnerId], contestState.eloScores[loserId]);
+      
+      // Atualizar range e scores/tiers
+      contestState.eloRange = calculateEloRange(contestState.eloScores);
+      contestState.scoresAndTiers = calculateScoresAndTiers(
+        contestState.eloScores, 
+        contestState.eloRange.min, 
+        contestState.eloRange.max
+      );
+    }
     
     // Atualizar histórico de Elo
     const battleId = `battle-${Date.now()}`;
