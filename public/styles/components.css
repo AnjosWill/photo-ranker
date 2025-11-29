@@ -2828,14 +2828,15 @@ body.selection-mode .split-btn {
 
 .ranking-item {
   display: grid;
-  grid-template-columns: 50px 80px 1fr auto auto;
-  gap: var(--gap-2);
+  grid-template-columns: 40px 60px 1fr auto;
+  gap: var(--gap-1);
   align-items: center;
   background: rgba(255, 255, 255, 0.03);
-  padding: var(--gap-2);
-  border-radius: 10px;
+  padding: var(--gap-1) var(--gap-2);
+  border-radius: 8px;
   border: 1px solid rgba(255, 255, 255, 0.05);
   transition: all 0.2s ease;
+  font-size: 14px;
 }
 
 .ranking-item:hover {
@@ -2849,7 +2850,7 @@ body.selection-mode .split-btn {
 }
 
 .ranking-position {
-  font-size: 24px;
+  font-size: 18px;
   font-weight: 700;
   color: var(--muted);
   text-align: center;
@@ -2860,9 +2861,9 @@ body.selection-mode .split-btn {
 }
 
 .ranking-thumb {
-  width: 80px;
-  height: 80px;
-  border-radius: 8px;
+  width: 60px;
+  height: 60px;
+  border-radius: 6px;
   overflow: hidden;
   background: #000;
 }
@@ -2876,17 +2877,18 @@ body.selection-mode .split-btn {
 .ranking-info {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
+  min-width: 0; /* Permite shrink */
 }
 
 .ranking-elo {
-  font-size: 20px;
+  font-size: 16px;
   font-weight: 600;
   color: var(--brand);
 }
 
 .ranking-record {
-  font-size: 14px;
+  font-size: 12px;
   color: var(--muted);
 }
 
@@ -3052,12 +3054,16 @@ body.selection-mode .split-btn {
 .bracket-history-match {
   display: flex;
   align-items: center;
-  gap: var(--gap-2);
-  padding: var(--gap-2);
+  gap: var(--gap-1);
+  padding: var(--gap-1);
   background: rgba(255, 255, 255, 0.03);
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: var(--radius);
   transition: all 0.2s ease;
+  width: 100%;
+  min-width: 0;
+  flex-shrink: 0;
+  box-sizing: border-box;
 }
 
 .bracket-history-match.completed {
@@ -3073,11 +3079,13 @@ body.selection-mode .split-btn {
 .bracket-history-slot {
   display: flex;
   align-items: center;
-  gap: var(--gap-2);
+  gap: var(--gap-1);
   padding: var(--gap-1);
-  border-radius: 8px;
+  border-radius: 6px;
   transition: all 0.2s ease;
   flex: 1;
+  min-width: 0;
+  box-sizing: border-box;
 }
 
 .bracket-history-slot.winner {
@@ -3091,11 +3099,12 @@ body.selection-mode .split-btn {
 }
 
 .bracket-history-thumb {
-  width: 60px;
-  height: 60px;
+  width: 50px;
+  height: 50px;
   object-fit: cover;
-  border-radius: 8px;
+  border-radius: 6px;
   border: 2px solid rgba(255, 255, 255, 0.1);
+  flex-shrink: 0;
 }
 
 .bracket-history-slot.winner .bracket-history-thumb {
@@ -3106,8 +3115,10 @@ body.selection-mode .split-btn {
 .bracket-history-info {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
   flex: 1;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .bracket-history-tier {
@@ -3143,11 +3154,12 @@ body.selection-mode .split-btn {
 }
 
 .bracket-history-vs {
-  font-size: 14px;
+  font-size: 12px;
   font-weight: 700;
   color: var(--muted);
-  padding: 0 var(--gap-2);
+  padding: 0 var(--gap-1);
   flex-shrink: 0;
+  white-space: nowrap;
 }
 
 @media (max-width: 768px) {
@@ -3238,6 +3250,20 @@ body.selection-mode .split-btn {
   font-weight: 500;
 }
 
+/* Heatmap Section Separada */
+.results-heatmap-section {
+  margin-top: var(--gap-4);
+  padding: var(--gap-3);
+  background: rgba(255, 255, 255, 0.02);
+  border-radius: var(--radius);
+}
+
+.results-heatmap-section h3 {
+  margin: 0 0 var(--gap-3);
+  font-size: 24px;
+  color: var(--fg);
+}
+
 /* Responsivo */
 @media (max-width: 1024px) {
   .results-main-layout {
@@ -3256,6 +3282,11 @@ body.selection-mode .split-btn {
   
   .stats-grid {
     grid-template-columns: repeat(2, 1fr);
+  }
+  
+  .results-heatmap-section {
+    margin-top: var(--gap-3);
+    padding: var(--gap-2);
   }
 }
 

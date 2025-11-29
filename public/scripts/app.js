@@ -5047,14 +5047,18 @@ async function renderResultsView() {
             <h4>Histórico de Batalhas - Brackets</h4>
             <div id="resultsBracketHistory" class="dashboard-bracket-history"></div>
           </div>
-          
-          <!-- Heatmap -->
-          <div class="dashboard-section">
-            <h4>Heatmap de Confrontos</h4>
-            <div id="resultsHeatmap" class="dashboard-heatmap"></div>
-          </div>
         </div>
       </div>
+    </div>
+    
+      </div>
+    </div>
+    
+    <!-- Heatmap (Painel Separado) -->
+    <div class="results-heatmap-section">
+      <h3>Heatmap de Confrontos</h3>
+      <div id="resultsHeatmap" class="dashboard-heatmap"></div>
+    </div>
     </div>
     
     <!-- Ações -->
