@@ -1111,7 +1111,7 @@ body.selection-mode .split-btn {
   max-width: 100%;
   margin: 0;
   padding: var(--gap-4);
-  padding-right: 150px; /* Espaço reduzido para o ranking sidebar fixo */
+  padding-right: calc(140px + 8px); /* Largura do ranking sidebar (140px) + 8px de distância */
   position: relative;
 }
 
