@@ -4183,9 +4183,26 @@ async function finishQualifyingAndStartBracket() {
     });
   
   // FILTRAR: apenas fotos com score > 50
-  // IMPORTANTE: Se nenhuma foto tem score > 50, usar todas as fotos (ou pelo menos as top 2)
-  const finalPhotos = ranked.filter(p => p.scoreData.score > 50);
+  // IMPORTANTE: Se nenhuma foto tem score > 50, usar as top 2 do ranking
+  let finalPhotos = ranked.filter(p => p.scoreData.score > 50);
   
+  if (finalPhotos.length < 2) {
+    // Se não há fotos suficientes com score > 50, usar as top 2 do ranking
+    finalPhotos = ranked.slice(0, Math.max(2, ranked.length));
+    console.log('[DEBUG] Nenhuma foto com score > 50, usando top', finalPhotos.length, 'fotos');
+    
+    if (finalPhotos.length < 2) {
+      // Se não há fotos suficientes, finalizar contest
+      contestState.phase = 'finished';
+      saveContestState();
+      toast(`🏆 Contest finalizado! Apenas ${finalPhotos.length} foto(s) participaram.`);
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      location.hash = '#/results';
+      return;
+    }
+  }
+  
+  // Continuar apenas se finalPhotos.length >= 2
   if (finalPhotos.length < 2) {
     // Se não há fotos suficientes com score > 50, usar as top 2 do ranking
     const topPhotos = ranked.slice(0, Math.max(2, ranked.length));
