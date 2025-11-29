@@ -3774,11 +3774,17 @@ async function finishQualifyingAndStartBracket() {
   }
   
   // Gerar batalhas "todas contra todas" para a fase final
+  // IMPORTANTE: Apenas batalhas que ainda NÃO foram travadas entre as fotos finais
+  // Considerar batalhas tanto da classificatória quanto da fase final (se houver)
+  const allBattles = contestState.battleHistory.filter(b => 
+    b.phase === 'qualifying' || b.phase === 'final'
+  );
+  
   const finalMatches = generateQualifyingBattles(
     finalPhotos,
-    finalPhotos.length - 1, // Cada foto batalha contra todas as outras
+    finalPhotos.length - 1, // Cada foto batalha contra todas as outras (se possível)
     eloScores,
-    contestState.battleHistory.filter(b => b.phase === 'qualifying') // Apenas batalhas da classificatória
+    allBattles // Todas as batalhas já realizadas (qualifying + final)
   );
   
   // Inicializar histórico de Elo para fase final (continuar do Elo atual)
