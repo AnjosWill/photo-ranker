@@ -2283,7 +2283,7 @@ async function startContest() {
   saveContestState();
   renderBattle();
   
-  toast(`Contest iniciado! ${qualifiedPhotos.length} participantes. Fase Classificatória: ${battlesPerPhoto} batalhas por foto (${totalBattles} total).`);
+  toast(`Contest iniciado! ${qualifiedPhotos.length} participantes. Fase Classificatória: ${totalBattles} batalhas no Round 1.`);
 }
 
 /**
@@ -2646,10 +2646,31 @@ async function renderQualifyingBattle() {
   }
   
   // Pegar match atual
+  // Se currentMatchIndex está fora do range, verificar se há próximo round
+  if (bracket.currentMatchIndex >= currentRound.matches.length) {
+    // Verificar se há próximo round
+    const nextRoundIndex = bracket.currentRound + 1;
+    if (nextRoundIndex < bracket.rounds.length) {
+      // Avançar para próximo round
+      bracket.currentRound = nextRoundIndex;
+      bracket.currentMatchIndex = 0;
+      console.log('[DEBUG] Avançando para Round', nextRoundIndex + 1);
+      // Recursivamente renderizar o próximo round
+      await renderQualifyingBattle();
+      return;
+    } else {
+      // Não há mais rounds - finalizar classificatória
+      console.log('[DEBUG] Todos os rounds completos - finalizando classificatória');
+      await finishQualifyingAndStartBracket();
+      return;
+    }
+  }
+  
   const currentMatch = currentRound.matches[bracket.currentMatchIndex];
   if (!currentMatch) {
-    console.log('[DEBUG] Sem mais matches neste round - finalizando classificatória');
-    await finishQualifyingAndStartBracket();
+    console.log('[DEBUG] Match atual não encontrado - avançando índice');
+    bracket.currentMatchIndex++;
+    await renderQualifyingBattle();
     return;
   }
   
