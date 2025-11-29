@@ -3257,33 +3257,61 @@ function loadContestState() {
       .map(id => allPhotos.find(p => p.id === id))
       .filter(Boolean);
     
-    const currentMatch = state.currentMatch ? {
-      photoA: allPhotos.find(p => p.id === state.currentMatch.photoA),
-      photoB: allPhotos.find(p => p.id === state.currentMatch.photoB)
-    } : null;
+    // Reconstruir fase classificatória
+    let qualifying = null;
+    if (state.qualifying) {
+      const currentMatch = state.qualifying.currentMatch ? {
+        photoA: allPhotos.find(p => p.id === state.qualifying.currentMatch.photoA),
+        photoB: allPhotos.find(p => p.id === state.qualifying.currentMatch.photoB)
+      } : null;
+      
+      const pendingMatches = state.qualifying.pendingMatches.map(m => ({
+        photoA: allPhotos.find(p => p.id === m.photoA),
+        photoB: allPhotos.find(p => p.id === m.photoB)
+      })).filter(m => m.photoA && m.photoB);
+      
+      qualifying = {
+        totalBattles: state.qualifying.totalBattles,
+        completedBattles: state.qualifying.completedBattles,
+        battlesPerPhoto: state.qualifying.battlesPerPhoto,
+        currentMatch: currentMatch,
+        pendingMatches: pendingMatches,
+        eloHistory: state.qualifying.eloHistory || {}
+      };
+    }
     
-    // Se currentMatch não existe mas há histórico, gerar próximo
-    if (!currentMatch && state.battleHistory && state.battleHistory.length > 0) {
-      const nextMatch = generateNextMatch(qualifiedPhotos, state.eloScores, state.battleHistory);
-      if (nextMatch) {
-        contestState = {
-          phase: state.phase,
-          qualifiedPhotos: qualifiedPhotos,
-          pendingMatches: [],
-          currentMatch: nextMatch,
-          eloScores: state.eloScores,
-          battleHistory: state.battleHistory
-        };
-        return;
-      }
+    // Reconstruir fase bracket
+    let bracket = null;
+    if (state.bracket) {
+      const seeds = state.bracket.seedIds
+        .map(id => allPhotos.find(p => p.id === id))
+        .filter(Boolean);
+      
+      const rounds = state.bracket.rounds.map(r => ({
+        round: r.round,
+        matches: r.matches.map(m => ({
+          photoA: allPhotos.find(p => p.id === m.photoA),
+          photoB: allPhotos.find(p => p.id === m.photoB),
+          winner: m.winner,
+          votesA: m.votesA,
+          votesB: m.votesB
+        })).filter(m => m.photoA && m.photoB)
+      }));
+      
+      bracket = {
+        seeds: seeds,
+        rounds: rounds,
+        currentRound: state.bracket.currentRound,
+        currentMatchIndex: state.bracket.currentMatchIndex
+      };
     }
     
     contestState = {
       phase: state.phase,
       qualifiedPhotos: qualifiedPhotos,
-      pendingMatches: [],
-      currentMatch: currentMatch,
-      eloScores: state.eloScores,
+      qualifying: qualifying,
+      bracket: bracket,
+      eloScores: state.eloScores || {},
       battleHistory: state.battleHistory || []
     };
     
