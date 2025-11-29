@@ -4607,7 +4607,10 @@ async function renderResultsView() {
     contestState.battleHistory,
     contestState.photoStats
   );
-  contestState.photoStats = photoStats;
+  
+  // Recalcular ranking priorizando W-L (contest finalizado)
+  const statsWithRank = calculateRankingFromStats(photoStats, true);
+  contestState.photoStats = statsWithRank;
   
   // Garantir que scoresAndTiers existam
   if (!contestState.scoresAndTiers || Object.keys(contestState.scoresAndTiers).length === 0) {
@@ -4619,25 +4622,47 @@ async function renderResultsView() {
     );
   }
   
-  // Gerar ranking ordenado por score
+  // Gerar ranking ordenado por W-L (vitórias - perdas)
   const ranking = [...contestState.qualifiedPhotos]
     .map(p => ({
       ...p,
-      stats: photoStats[p.id],
+      stats: statsWithRank[p.id],
       scoreData: contestState.scoresAndTiers[p.id] || { score: 50, tier: TIERS[4] }
     }))
     .sort((a, b) => {
-      if (b.scoreData.score !== a.scoreData.score) {
-        return b.scoreData.score - a.scoreData.score;
+      const wlA = a.stats.wins - a.stats.losses;
+      const wlB = b.stats.wins - b.stats.losses;
+      
+      // 1. W-L (vitórias - perdas)
+      if (wlB !== wlA) {
+        return wlB - wlA;
       }
+      
+      // 2. Mais vitórias
       if (b.stats.wins !== a.stats.wins) {
         return b.stats.wins - a.stats.wins;
       }
+      
+      // 3. Menos perdas
+      if (a.stats.losses !== b.stats.losses) {
+        return a.stats.losses - b.stats.losses;
+      }
+      
+      // 4. Score (desempate final)
+      if (b.scoreData.score !== a.scoreData.score) {
+        return b.scoreData.score - a.scoreData.score;
+      }
+      
       return a.id.localeCompare(b.id);
     });
   
-  const championId = getChampion(contestState.eloScores);
-  const champion = ranking.find(p => p.id === championId);
+  // Usar championId salvo (definido por W-L em finishFinalPhase) ou calcular por W-L
+  let championId = contestState.championId;
+  if (!championId) {
+    // Fallback: campeã é a primeira do ranking (maior W-L)
+    championId = ranking[0]?.id;
+  }
+  const champion = ranking.find(p => p.id === championId) || ranking[0];
   
   if (!champion) {
     container.innerHTML = `
@@ -4724,9 +4749,11 @@ async function renderResultsView() {
     item.className = `ranking-item ${isChampion ? 'champion' : ''}`;
     
     const scoreData = photo.scoreData;
+    // Usar rank calculado por W-L (do stats), não o índice do array
+    const displayRank = photo.stats?.rank || (index + 1);
     
     item.innerHTML = `
-      <div class="ranking-position">${isChampion ? '🏆' : `#${index + 1}`}</div>
+      <div class="ranking-position">${isChampion ? '🏆' : `#${displayRank}`}</div>
       <div class="ranking-thumb">
         <img src="${photo.thumb}" alt="Foto ${index + 1}">
       </div>
