@@ -3103,12 +3103,29 @@ function handleBattleKeys(e) {
  * Registra vencedor de um confronto
  */
 async function chooseBattleWinner(winner) {
-  if (!contestState || contestState.phase === 'finished') return;
+  console.log('[DEBUG] chooseBattleWinner chamado:', winner);
+  console.log('[DEBUG] contestState:', contestState);
+  
+  if (!contestState) {
+    console.error('[DEBUG] contestState não existe!');
+    return;
+  }
+  
+  if (contestState.phase === 'finished') {
+    console.log('[DEBUG] Contest já finalizado');
+    return;
+  }
+  
+  console.log('[DEBUG] Phase atual:', contestState.phase);
   
   if (contestState.phase === 'qualifying') {
+    console.log('[DEBUG] Processando batalha da fase classificatória');
     await handleQualifyingBattle(winner);
   } else if (contestState.phase === 'bracket') {
+    console.log('[DEBUG] Processando batalha da fase bracket');
     await handleBracketBattle(winner);
+  } else {
+    console.error('[DEBUG] Fase desconhecida:', contestState.phase);
   }
 }
 
