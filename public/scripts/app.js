@@ -1846,12 +1846,29 @@ function generateNextMatch(photos, eloScores, battleHistory) {
 
 /**
  * Calcula estatísticas de cada foto
+ * OTIMIZADO: Usa cache se disponível, atualiza incrementalmente
  * @param {Array} photos - Fotos participantes
  * @param {Object} eloScores - Scores Elo
  * @param {Array} battleHistory - Histórico de batalhas
+ * @param {Object} cachedStats - Stats em cache (opcional)
  * @returns {Object} { photoId: {wins, losses, elo, rank} }
  */
-function calculatePhotoStats(photos, eloScores, battleHistory) {
+function calculatePhotoStats(photos, eloScores, battleHistory, cachedStats = null) {
+  // Se há cache e battleHistory não mudou, usar cache
+  if (cachedStats && contestState?.photoStats && 
+      battleHistory.length === Object.keys(cachedStats).reduce((sum, id) => 
+        sum + (cachedStats[id].wins || 0) + (cachedStats[id].losses || 0), 0) / 2)) {
+    // Apenas atualizar Elo (pode ter mudado)
+    Object.keys(cachedStats).forEach(id => {
+      if (cachedStats[id]) {
+        cachedStats[id].elo = eloScores[id] || 1500;
+      }
+    });
+    // Recalcular ranking (Elo pode ter mudado)
+    return calculateRankingFromStats(cachedStats);
+  }
+  
+  // Calcular do zero
   const stats = {};
   
   photos.forEach(p => {
@@ -1869,9 +1886,43 @@ function calculatePhotoStats(photos, eloScores, battleHistory) {
     if (stats[loser]) stats[loser].losses++;
   });
   
-  // Calcular ranking
+  return calculateRankingFromStats(stats);
+}
+
+/**
+ * Calcula ranking a partir de stats (com critério de desempate)
+ * @param {Object} stats - { photoId: {wins, losses, elo} }
+ * @returns {Object} Stats com rank adicionado
+ */
+function calculateRankingFromStats(stats) {
+  // Ordenar com critério de desempate:
+  // 1. Elo (maior → menor)
+  // 2. Mais vitórias (maior → menor)
+  // 3. Menos derrotas (menor → maior)
+  // 4. ID (para consistência)
   const ranked = Object.entries(stats)
-    .sort((a, b) => b[1].elo - a[1].elo)
+    .sort((a, b) => {
+      const [idA, statsA] = a;
+      const [idB, statsB] = b;
+      
+      // 1. Elo
+      if (statsB.elo !== statsA.elo) {
+        return statsB.elo - statsA.elo;
+      }
+      
+      // 2. Mais vitórias
+      if (statsB.wins !== statsA.wins) {
+        return statsB.wins - statsA.wins;
+      }
+      
+      // 3. Menos derrotas
+      if (statsA.losses !== statsB.losses) {
+        return statsA.losses - statsB.losses;
+      }
+      
+      // 4. ID (para consistência)
+      return idA.localeCompare(idB);
+    })
     .map(([id], index) => ({ id, rank: index + 1 }));
   
   ranked.forEach(({ id, rank }) => {
@@ -2065,7 +2116,7 @@ async function startContest() {
     
     eloScores: eloScores,
     battleHistory: [],
-    photoStats: {}
+    photoStats: {} // Cache de stats para performance
   };
   
   saveContestState();
@@ -2388,8 +2439,10 @@ async function renderQualifyingBattle() {
   // Se o usuário clicou, processar o voto normalmente (não usar confronto automático)
   // O confronto automático só deve ser usado quando renderiza a batalha, não quando processa o voto
   
-  // Calcular estatísticas
-  const photoStats = calculatePhotoStats(qualifiedPhotos, eloScores, battleHistory);
+  // Calcular estatísticas (usar cache se disponível)
+  const photoStats = calculatePhotoStats(qualifiedPhotos, eloScores, battleHistory, contestState.photoStats);
+  // Atualizar cache
+  contestState.photoStats = photoStats;
   const statsA = photoStats[photoA.id];
   const statsB = photoStats[photoB.id];
   const eloA = eloScores[photoA.id] || 1500;
@@ -2664,7 +2717,9 @@ function renderRankingOverlay() {
   if (!contestState || contestState.phase !== 'qualifying') return '';
   
   const { qualifiedPhotos, eloScores, battleHistory } = contestState;
-  const photoStats = calculatePhotoStats(qualifiedPhotos, eloScores, battleHistory);
+  const photoStats = calculatePhotoStats(qualifiedPhotos, eloScores, battleHistory, contestState.photoStats);
+  // Atualizar cache
+  contestState.photoStats = photoStats;
   const ranked = [...qualifiedPhotos]
     .map(p => ({ ...p, stats: photoStats[p.id] }))
     .sort((a, b) => b.stats.elo - a.stats.elo);
@@ -2974,7 +3029,7 @@ window.showPhotoDetails = function(photoId) {
     b.photoA === photoId || b.photoB === photoId
   );
   
-  const photoStats = calculatePhotoStats([photo], eloScores, battleHistory);
+  const photoStats = calculatePhotoStats([photo], eloScores, battleHistory, contestState.photoStats);
   const stats = photoStats[photoId];
   
   // Criar modal de detalhes
@@ -3030,7 +3085,17 @@ window.showPhotoDetails = function(photoId) {
  */
 function renderEloChart(canvasId, eloHistory) {
   const canvas = $(canvasId);
-  if (!canvas || eloHistory.length < 2) return;
+  if (!canvas) return;
+  
+  // Se histórico insuficiente, mostrar mensagem
+  if (eloHistory.length < 2) {
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+    ctx.font = '16px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('Histórico insuficiente para gráfico', canvas.width / 2, canvas.height / 2);
+    return;
+  }
   
   const ctx = canvas.getContext('2d');
   const width = canvas.width;
@@ -3291,6 +3356,21 @@ async function handleQualifyingBattle(winner) {
       eloChange: result.change,
       phase: 'qualifying'
     });
+    
+    // Atualizar cache de stats incrementalmente
+    if (!contestState.photoStats[winnerId]) {
+      contestState.photoStats[winnerId] = { wins: 0, losses: 0, elo: contestState.eloScores[winnerId] };
+    }
+    if (!contestState.photoStats[loserId]) {
+      contestState.photoStats[loserId] = { wins: 0, losses: 0, elo: contestState.eloScores[loserId] };
+    }
+    contestState.photoStats[winnerId].wins++;
+    contestState.photoStats[winnerId].elo = contestState.eloScores[winnerId];
+    contestState.photoStats[loserId].losses++;
+    contestState.photoStats[loserId].elo = contestState.eloScores[loserId];
+    
+    // Recalcular ranking (Elo mudou)
+    contestState.photoStats = calculateRankingFromStats(contestState.photoStats);
     
     console.log('[DEBUG] Batalha salva no histórico');
     
