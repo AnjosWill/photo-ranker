@@ -3432,10 +3432,23 @@ function renderBracketPreview() {
  * Renderiza heatmap de confrontos
  */
 function renderHeatmap() {
-  if (!contestState) return '';
+  if (!contestState) {
+    console.log('[DEBUG] renderHeatmap - contestState não existe');
+    return '<p class="muted">Nenhum contest disponível.</p>';
+  }
   // Permitir renderizar em qualquer fase (qualifying, bracket, finished)
   
   const { qualifiedPhotos, battleHistory } = contestState;
+  
+  if (!qualifiedPhotos || qualifiedPhotos.length === 0) {
+    console.log('[DEBUG] renderHeatmap - qualifiedPhotos vazio');
+    return '<p class="muted">Nenhuma foto participante.</p>';
+  }
+  
+  if (!battleHistory || battleHistory.length === 0) {
+    console.log('[DEBUG] renderHeatmap - battleHistory vazio');
+    return '<p class="muted">Nenhuma batalha registrada ainda.</p>';
+  }
   
   // Criar matriz de confrontos
   const matrix = {};
