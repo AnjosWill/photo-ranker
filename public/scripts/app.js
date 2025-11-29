@@ -2703,7 +2703,161 @@ async function renderQualifyingBattle() {
 }
 
 /**
- * Renderiza batalha da fase bracket
+ * Renderiza batalha da fase final (todas contra todas entre fotos com score > 50)
+ */
+async function renderFinalBattle() {
+  const container = $('#contestView');
+  if (!container) {
+    console.error('[DEBUG] renderFinalBattle: container não encontrado!');
+    return;
+  }
+  
+  if (!contestState || !contestState.final) {
+    console.error('[DEBUG] renderFinalBattle: contestState ou final não existe!');
+    await renderContestView();
+    return;
+  }
+  
+  const { final, eloScores, battleHistory } = contestState;
+  const { finalPhotos } = final;
+  
+  console.log('[DEBUG] renderFinalBattle - final:', final);
+  console.log('[DEBUG] renderFinalBattle - currentMatch:', final?.currentMatch);
+  console.log('[DEBUG] renderFinalBattle - pendingMatches:', final?.pendingMatches?.length);
+  
+  // Se não há currentMatch, tentar pegar da fila
+  if (!final.currentMatch && final.pendingMatches && final.pendingMatches.length > 0) {
+    console.log('[DEBUG] currentMatch vazio, pegando da fila');
+    final.currentMatch = final.pendingMatches.shift() || null;
+  }
+  
+  const { currentMatch } = final;
+  
+  if (!currentMatch) {
+    console.log('[DEBUG] Sem mais batalhas - finalizando contest');
+    // Sem mais batalhas - finalizar contest
+    await finishFinalPhase();
+    return;
+  }
+  
+  if (!currentMatch.photoA || !currentMatch.photoB) {
+    console.error('[DEBUG] renderFinalBattle: currentMatch inválido!', currentMatch);
+    await renderContestView();
+    return;
+  }
+  
+  const photoA = currentMatch.photoA;
+  const photoB = currentMatch.photoB;
+  
+  // Calcular estatísticas (usar cache se disponível)
+  const photoStats = calculatePhotoStats(finalPhotos, eloScores, battleHistory, contestState.photoStats);
+  // Atualizar cache
+  contestState.photoStats = photoStats;
+  const statsA = photoStats[photoA.id];
+  const statsB = photoStats[photoB.id];
+  
+  // Obter scores e tiers (valores congelados da classificatória)
+  const scoreA = contestState.scoresAndTiers[photoA.id] || { score: 50, tier: TIERS[4] };
+  const scoreB = contestState.scoresAndTiers[photoB.id] || { score: 50, tier: TIERS[4] };
+  
+  const progress = Math.round((final.completedBattles / final.totalBattles) * 100);
+  
+  container.innerHTML = `
+    <div class="contest-battle">
+      <div class="contest-progress">
+        <strong>Fase Final - Todas Contra Todas</strong><br>
+        Batalha <span class="current">${final.completedBattles + 1}</span> de ${final.totalBattles} 
+        <span class="progress-bar-mini">
+          <span class="progress-fill" style="width: ${progress}%"></span>
+        </span>
+      </div>
+      
+      <div class="battle-with-ranking">
+        <div class="battle-container">
+          <!-- Foto A -->
+          <div class="battle-photo" id="battlePhotoA" tabindex="0" role="button" aria-label="Escolher Foto A (1 ou ←)">
+            <img src="${photoA.thumb}" alt="Foto A">
+            <div class="battle-label">1</div>
+            <div class="battle-info">
+              <div class="battle-rank">#${statsA.rank} | ${statsA.wins}W-${statsA.losses}L</div>
+            </div>
+          </div>
+          
+          <!-- VS -->
+          <div class="battle-vs">
+            <span>VS</span>
+          </div>
+          
+          <!-- Foto B -->
+          <div class="battle-photo" id="battlePhotoB" tabindex="0" role="button" aria-label="Escolher Foto B (2 ou →)">
+            <img src="${photoB.thumb}" alt="Foto B">
+            <div class="battle-label">2</div>
+            <div class="battle-info">
+              <div class="battle-rank">#${statsB.rank} | ${statsB.wins}W-${statsB.losses}L</div>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Ranking dinâmico -->
+        <div class="dynamic-ranking">
+          <h4>Ranking Final</h4>
+          <div class="ranking-list">
+            ${renderDynamicRanking(finalPhotos, photoStats)}
+          </div>
+        </div>
+      </div>
+      
+      <div class="battle-actions">
+        <button class="btn btn-secondary" id="toggleRankingView" data-tooltip="Ver Ranking Completo">
+          📊 Ranking
+        </button>
+        <button class="btn btn-secondary" id="cancelContest">Cancelar Contest</button>
+      </div>
+    </div>
+    
+    <!-- Overlays -->
+    ${renderRankingOverlay()}
+    ${renderHeatmapOverlay()}
+  `;
+  
+  // Remover listener antigo se existir
+  if (battleKeysHandler) {
+    document.removeEventListener('keydown', battleKeysHandler);
+  }
+  
+  // Criar novo handler e adicionar
+  battleKeysHandler = handleBattleKeys;
+  document.addEventListener('keydown', battleKeysHandler);
+  
+  // Event listeners para cliques - usar event delegation
+  const battleContainer = $('.battle-container');
+  if (battleContainer) {
+    const newContainer = battleContainer.cloneNode(true);
+    battleContainer.replaceWith(newContainer);
+    
+    newContainer.addEventListener('click', (e) => {
+      const target = e.target.closest('#battlePhotoA, #battlePhotoB');
+      if (!target) return;
+      
+      e.preventDefault();
+      e.stopPropagation();
+      
+      if (target.id === 'battlePhotoA') {
+        console.log('[DEBUG] Clique detectado na Foto A (final)');
+        chooseBattleWinner('A');
+      } else if (target.id === 'battlePhotoB') {
+        console.log('[DEBUG] Clique detectado na Foto B (final)');
+        chooseBattleWinner('B');
+      }
+    });
+  }
+  
+  $('#cancelContest')?.addEventListener('click', confirmCancelContest);
+  $('#toggleRankingView')?.addEventListener('click', () => toggleOverlay('rankingOverlay'));
+}
+
+/**
+ * Renderiza batalha da fase bracket (LEGADO - não usado mais)
  */
 async function renderBracketBattle() {
   const container = $('#contestView');
