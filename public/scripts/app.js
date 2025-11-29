@@ -4573,10 +4573,13 @@ function loadContestState() {
     const saved = localStorage.getItem('photoranker-contest-state');
     if (!saved) {
       contestState = null;
+      console.log('[DEBUG] loadContestState: Nenhum estado salvo encontrado');
       return;
     }
     
+    console.log('[DEBUG] loadContestState: Estado encontrado, parseando...');
     const state = JSON.parse(saved);
+    console.log('[DEBUG] loadContestState: Estado parseado:', state);
     
     // Reconstruir objetos Photo completos
     const qualifiedPhotos = state.qualifiedPhotoIds
@@ -4586,29 +4589,40 @@ function loadContestState() {
     // Reconstruir fase classificatória
     let qualifying = null;
     if (state.qualifying) {
+      console.log('[DEBUG] loadContestState: Reconstruindo qualifying...');
+      
       // NOVO: Reconstruir bracket se existir
       let bracket = null;
       if (state.qualifying.bracket) {
-        bracket = {
-          rounds: state.qualifying.bracket.rounds.map(round => ({
-            round: round.round,
-            type: round.type,
-            matches: round.matches.map(match => ({
-              photoA: match.photoAId ? allPhotos.find(p => p.id === match.photoAId) : null,
-              photoB: match.photoBId ? allPhotos.find(p => p.id === match.photoBId) : null,
-              winner: match.winnerId ? allPhotos.find(p => p.id === match.winnerId) : null,
-              loser: match.loserId ? allPhotos.find(p => p.id === match.loserId) : null,
-              completed: match.completed || false,
-              bye: match.bye || false
-            })).filter(m => m.photoA || m.photoB), // Filtrar matches inválidos
-            winners: round.winners || [],
-            losers: round.losers || [],
-            completed: round.completed || false
-          })),
-          currentRound: state.qualifying.bracket.currentRound || 0,
-          currentMatchIndex: state.qualifying.bracket.currentMatchIndex || 0,
-          totalRounds: state.qualifying.bracket.totalRounds || 0
-        };
+        console.log('[DEBUG] loadContestState: Reconstruindo bracket...');
+        try {
+          bracket = {
+            rounds: state.qualifying.bracket.rounds.map(round => ({
+              round: round.round,
+              type: round.type,
+              matches: round.matches.map(match => ({
+                photoA: match.photoAId ? allPhotos.find(p => p.id === match.photoAId) : null,
+                photoB: match.photoBId ? allPhotos.find(p => p.id === match.photoBId) : null,
+                winner: match.winnerId ? allPhotos.find(p => p.id === match.winnerId) : null,
+                loser: match.loserId ? allPhotos.find(p => p.id === match.loserId) : null,
+                completed: match.completed || false,
+                bye: match.bye || false
+              })).filter(m => m.photoA || m.photoB), // Filtrar matches inválidos
+              winners: round.winners || [],
+              losers: round.losers || [],
+              completed: round.completed || false
+            })),
+            currentRound: state.qualifying.bracket.currentRound || 0,
+            currentMatchIndex: state.qualifying.bracket.currentMatchIndex || 0,
+            totalRounds: state.qualifying.bracket.totalRounds || 0
+          };
+          console.log('[DEBUG] loadContestState: Bracket reconstruído:', bracket);
+        } catch (error) {
+          console.error('[DEBUG] loadContestState: Erro ao reconstruir bracket:', error);
+          bracket = null;
+        }
+      } else {
+        console.log('[DEBUG] loadContestState: Nenhum bracket salvo encontrado');
       }
       
       // SISTEMA ANTERIOR (mantido para compatibilidade):
