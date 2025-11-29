@@ -1981,6 +1981,14 @@ async function startContest() {
     []
   );
   
+  console.log('[DEBUG] startContest - qualifyingMatches geradas:', qualifyingMatches.length);
+  console.log('[DEBUG] startContest - primeira batalha:', qualifyingMatches[0]);
+  
+  if (qualifyingMatches.length === 0) {
+    toast('Erro: Não foi possível gerar batalhas. Verifique se há fotos suficientes.');
+    return;
+  }
+  
   // Inicializar histórico de Elo por foto
   const eloHistory = {};
   qualifiedPhotos.forEach(p => {
