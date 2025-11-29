@@ -1924,62 +1924,124 @@ function getPreviousWinner(photoAId, photoBId, battleHistory) {
 }
 
 /**
- * Organiza batalhas em rodadas de eliminatória
- * Vencedores avançam, perdedores também batalham entre si
+ * Organiza batalhas em rodadas de eliminatória progressiva
+ * Rastreia vencedores e perdedores, mostrando como avançam
  */
 function organizeBattlesIntoRounds(battleHistory, qualifiedPhotos) {
-  if (battleHistory.length === 0) return { rounds: [], nextRound: [] };
+  if (battleHistory.length === 0) return { rounds: [] };
   
-  // Rodada 1: todas as batalhas iniciais
-  const round1 = battleHistory.filter((b, idx) => {
-    // Primeiras batalhas são da rodada 1
-    // Agrupar por "lote" inicial (primeiras N batalhas)
-    return idx < Math.ceil(qualifiedPhotos.length / 2);
-  });
-  
-  // Identificar vencedores e perdedores da R1
-  const r1Winners = new Set(round1.map(b => b.winner));
-  const r1Losers = new Set();
-  round1.forEach(b => {
-    const loser = b.photoA === b.winner ? b.photoB : b.photoA;
-    r1Losers.add(loser);
-  });
-  
-  // Rodada 2: vencedores vs vencedores, perdedores vs perdedores
-  const round2Winners = [];
-  const round2Losers = [];
-  
-  battleHistory.forEach((b, idx) => {
-    if (idx < round1.length) return; // Já está na R1
-    
-    const photoA = b.photoA;
-    const photoB = b.photoB;
-    const isWinnerBattle = r1Winners.has(photoA) && r1Winners.has(photoB);
-    const isLoserBattle = r1Losers.has(photoA) && r1Losers.has(photoB);
-    
-    if (isWinnerBattle) {
-      round2Winners.push(b);
-    } else if (isLoserBattle) {
-      round2Losers.push(b);
-    } else {
-      // Batalhas mistas ou outras - adicionar à R2 winners por padrão
-      round2Winners.push(b);
-    }
-  });
-  
-  // Organizar em rodadas
   const rounds = [];
-  if (round1.length > 0) rounds.push({ type: 'winners', battles: round1, label: 'Rodada 1' });
-  if (round2Winners.length > 0) rounds.push({ type: 'winners', battles: round2Winners, label: 'Rodada 2 - Vencedores' });
-  if (round2Losers.length > 0) rounds.push({ type: 'losers', battles: round2Losers, label: 'Rodada 2 - Perdedores' });
+  let processedBattles = 0;
+  let currentRound = 1;
+  let currentWinners = new Set(qualifiedPhotos.map(p => p.id)); // Todos começam como "vencedores" (ainda não perderam)
+  let currentLosers = new Set();
   
-  // Próximas rodadas (se houver mais batalhas)
-  const remainingBattles = battleHistory.slice(round1.length + round2Winners.length + round2Losers.length);
-  if (remainingBattles.length > 0) {
-    rounds.push({ type: 'next', battles: remainingBattles, label: 'Próximas Rodadas' });
+  // Rodada 1: primeiras batalhas (todos contra todos iniciais)
+  const initialBattles = Math.min(qualifiedPhotos.length - 1, battleHistory.length);
+  const round1 = battleHistory.slice(0, initialBattles);
+  
+  if (round1.length > 0) {
+    const r1Winners = new Set();
+    const r1Losers = new Set();
+    
+    round1.forEach(b => {
+      r1Winners.add(b.winner);
+      const loser = b.photoA === b.winner ? b.photoB : b.photoA;
+      r1Losers.add(loser);
+    });
+    
+    rounds.push({
+      round: 1,
+      battles: round1,
+      winners: r1Winners,
+      losers: r1Losers,
+      label: 'Rodada 1'
+    });
+    
+    currentWinners = r1Winners;
+    currentLosers = r1Losers;
+    processedBattles = round1.length;
+    currentRound = 2;
   }
   
-  return { rounds, nextRound: [] };
+  // Rodadas seguintes: organizar por vencedores e perdedores
+  while (processedBattles < battleHistory.length) {
+    const roundWinners = [];
+    const roundLosers = [];
+    const nextWinners = new Set();
+    const nextLosers = new Set();
+    
+    // Processar batalhas restantes
+    for (let i = processedBattles; i < battleHistory.length; i++) {
+      const battle = battleHistory[i];
+      const photoA = battle.photoA;
+      const photoB = battle.photoB;
+      
+      // Verificar se ambas são vencedoras ou ambas são perdedoras
+      const bothWinners = currentWinners.has(photoA) && currentWinners.has(photoB);
+      const bothLosers = currentLosers.has(photoA) && currentLosers.has(photoB);
+      
+      if (bothWinners) {
+        roundWinners.push(battle);
+        nextWinners.add(battle.winner);
+        const loser = photoA === battle.winner ? photoB : photoA;
+        nextLosers.add(loser);
+        processedBattles++;
+      } else if (bothLosers) {
+        roundLosers.push(battle);
+        nextWinners.add(battle.winner); // Vencedor entre perdedores avança
+        const loser = photoA === battle.winner ? photoB : photoA;
+        nextLosers.add(loser);
+        processedBattles++;
+      } else {
+        // Batalha mista ou fora de ordem - pular por enquanto
+        break;
+      }
+    }
+    
+    // Adicionar rodadas
+    if (roundWinners.length > 0) {
+      rounds.push({
+        round: currentRound,
+        battles: roundWinners,
+        winners: nextWinners,
+        losers: nextLosers,
+        label: `Rodada ${currentRound} - Vencedores`
+      });
+      currentWinners = nextWinners;
+      currentRound++;
+    }
+    
+    if (roundLosers.length > 0) {
+      rounds.push({
+        round: currentRound,
+        battles: roundLosers,
+        winners: nextWinners,
+        losers: nextLosers,
+        label: `Rodada ${currentRound} - Perdedores`
+      });
+      currentRound++;
+    }
+    
+    // Se não processou nenhuma batalha, parar
+    if (roundWinners.length === 0 && roundLosers.length === 0) {
+      break;
+    }
+  }
+  
+  // Batalhas restantes (fora de ordem ou mistas)
+  const remainingBattles = battleHistory.slice(processedBattles);
+  if (remainingBattles.length > 0) {
+    rounds.push({
+      round: currentRound,
+      battles: remainingBattles,
+      winners: new Set(),
+      losers: new Set(),
+      label: 'Batalhas Adicionais'
+    });
+  }
+  
+  return { rounds };
 }
 
 /**
@@ -2044,11 +2106,11 @@ function renderBracket() {
       if (photoBWon) html += '<span class="bracket-check">✓</span>';
       html += `</div></div>`;
       
-      // Flecha para próxima rodada (se vencedor e não for última rodada)
-      if (photoAWon && roundIdx < rounds.length - 1 && battleIdx === round.battles.length - 1) {
-        html += `<div class="bracket-arrow" data-winner="${photoA.id}"></div>`;
-      } else if (photoBWon && roundIdx < rounds.length - 1 && battleIdx === round.battles.length - 1) {
-        html += `<div class="bracket-arrow" data-winner="${photoB.id}"></div>`;
+      // Flecha para próxima rodada (sempre mostrar para vencedor)
+      if (photoAWon && roundIdx < rounds.length - 1) {
+        html += `<div class="bracket-arrow" data-winner="${photoA.id}" title="Vencedor avança para próxima rodada"></div>`;
+      } else if (photoBWon && roundIdx < rounds.length - 1) {
+        html += `<div class="bracket-arrow" data-winner="${photoB.id}" title="Vencedor avança para próxima rodada"></div>`;
       }
       
       html += `</div>`; // Fecha bracket-battle-container
