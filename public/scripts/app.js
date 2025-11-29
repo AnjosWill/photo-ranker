@@ -2973,7 +2973,8 @@ function renderBracketPreview() {
  * Renderiza heatmap de confrontos
  */
 function renderHeatmap() {
-  if (!contestState || contestState.phase !== 'qualifying') return '';
+  if (!contestState) return '';
+  // Permitir renderizar em qualquer fase (qualifying, bracket, finished)
   
   const { qualifiedPhotos, battleHistory } = contestState;
   
@@ -4100,6 +4101,9 @@ async function renderResultsView() {
   const container = $('#resultsView');
   if (!container) return;
   
+  // Carregar fotos atualizadas PRIMEIRO
+  allPhotos = await getAllPhotos();
+  
   // Carregar estado do contest
   loadContestState();
   
@@ -4116,12 +4120,41 @@ async function renderResultsView() {
     return;
   }
   
-  // Gerar ranking
-  const ranking = generateRanking(
+  // Calcular stats e scores/tiers
+  const photoStats = calculatePhotoStats(
     contestState.qualifiedPhotos, 
     contestState.eloScores, 
-    contestState.battleHistory
+    contestState.battleHistory,
+    contestState.photoStats
   );
+  contestState.photoStats = photoStats;
+  
+  // Garantir que scoresAndTiers existam
+  if (!contestState.scoresAndTiers || Object.keys(contestState.scoresAndTiers).length === 0) {
+    contestState.eloRange = calculateEloRange(contestState.eloScores);
+    contestState.scoresAndTiers = calculateScoresAndTiers(
+      contestState.eloScores,
+      contestState.eloRange.min,
+      contestState.eloRange.max
+    );
+  }
+  
+  // Gerar ranking ordenado por score
+  const ranking = [...contestState.qualifiedPhotos]
+    .map(p => ({
+      ...p,
+      stats: photoStats[p.id],
+      scoreData: contestState.scoresAndTiers[p.id] || { score: 50, tier: TIERS[4] }
+    }))
+    .sort((a, b) => {
+      if (b.scoreData.score !== a.scoreData.score) {
+        return b.scoreData.score - a.scoreData.score;
+      }
+      if (b.stats.wins !== a.stats.wins) {
+        return b.stats.wins - a.stats.wins;
+      }
+      return a.id.localeCompare(b.id);
+    });
   
   const championId = getChampion(contestState.eloScores);
   const champion = ranking.find(p => p.id === championId);
@@ -4137,6 +4170,8 @@ async function renderResultsView() {
     return;
   }
   
+  const championScore = champion.scoreData;
+  
   // Renderizar resultados
   container.innerHTML = `
     <!-- Campeão -->
@@ -4148,15 +4183,18 @@ async function renderResultsView() {
       </div>
       <div class="champion-stats">
         <div class="stat">
-          <strong>${champion.elo}</strong>
-          <span>Rating Elo</span>
+          <div class="tier-badge tier-badge-large">
+            <div class="tier-icon">${championScore.tier.icon}</div>
+            <div class="tier-score">${championScore.score}/100</div>
+            <div class="tier-label">${championScore.tier.label}</div>
+          </div>
         </div>
         <div class="stat">
-          <strong class="ranking-wins">${champion.wins}</strong>
+          <strong class="ranking-wins">${champion.stats.wins}</strong>
           <span>Vitórias</span>
         </div>
         <div class="stat">
-          <strong class="ranking-losses">${champion.losses}</strong>
+          <strong class="ranking-losses">${champion.stats.losses}</strong>
           <span>Derrotas</span>
         </div>
       </div>
@@ -4168,6 +4206,29 @@ async function renderResultsView() {
       <div id="rankingList" class="ranking-list"></div>
     </div>
     
+    <!-- Dashboard de Estatísticas -->
+    <div class="results-dashboard">
+      <h3>Dashboard de Estatísticas</h3>
+      
+      <!-- Heatmap -->
+      <div class="dashboard-section">
+        <h4>Heatmap de Confrontos</h4>
+        <div id="resultsHeatmap" class="dashboard-heatmap"></div>
+      </div>
+      
+      <!-- Gráficos de Evolução (Top 5) -->
+      <div class="dashboard-section">
+        <h4>Evolução do Score - Top 5</h4>
+        <div id="resultsCharts" class="dashboard-charts"></div>
+      </div>
+      
+      <!-- Estatísticas Gerais -->
+      <div class="dashboard-section">
+        <h4>Estatísticas Gerais do Contest</h4>
+        <div id="resultsStats" class="dashboard-stats"></div>
+      </div>
+    </div>
+    
     <!-- Ações -->
     <div class="results-actions">
       <button class="btn btn-secondary" id="restartContest">🔄 Recomeçar Contest</button>
@@ -4175,12 +4236,14 @@ async function renderResultsView() {
     </div>
   `;
   
-  // Renderizar ranking
+  // Renderizar ranking com tier badges
   const rankingList = $('#rankingList');
   ranking.forEach((photo, index) => {
     const isChampion = photo.id === championId;
     const item = document.createElement('div');
     item.className = `ranking-item ${isChampion ? 'champion' : ''}`;
+    
+    const scoreData = photo.scoreData;
     
     item.innerHTML = `
       <div class="ranking-position">${isChampion ? '🏆' : `#${index + 1}`}</div>
@@ -4188,17 +4251,94 @@ async function renderResultsView() {
         <img src="${photo.thumb}" alt="Foto ${index + 1}">
       </div>
       <div class="ranking-info">
-        <div class="ranking-elo">Elo: ${photo.elo}</div>
+        <div class="tier-badge tier-badge-small">
+          <div class="tier-icon">${scoreData.tier.icon}</div>
+          <div class="tier-score">${scoreData.score}/100</div>
+          <div class="tier-label">${scoreData.tier.label}</div>
+        </div>
         <div class="ranking-record">
-          <span class="ranking-wins">${photo.wins}V</span> - 
-          <span class="ranking-losses">${photo.losses}D</span>
-          ${photo.total > 0 ? ` (${Math.round(photo.wins / photo.total * 100)}%)` : ''}
+          <span class="ranking-wins">${photo.stats.wins}V</span> - 
+          <span class="ranking-losses">${photo.stats.losses}D</span>
+          ${photo.stats.wins + photo.stats.losses > 0 
+            ? ` (${Math.round(photo.stats.wins / (photo.stats.wins + photo.stats.losses) * 100)}%)` 
+            : ''}
         </div>
       </div>
     `;
     
     rankingList.appendChild(item);
   });
+  
+  // Renderizar heatmap
+  const heatmapContainer = $('#resultsHeatmap');
+  if (heatmapContainer) {
+    heatmapContainer.innerHTML = renderHeatmap();
+  }
+  
+  // Renderizar gráficos de evolução (Top 5)
+  const chartsContainer = $('#resultsCharts');
+  if (chartsContainer) {
+    const top5 = ranking.slice(0, 5);
+    top5.forEach((photo, idx) => {
+      const photoBattles = contestState.battleHistory.filter(b => 
+        b.photoA === photo.id || b.photoB === photo.id
+      );
+      const eloHistory = contestState.qualifying?.eloHistory?.[photo.id] || [];
+      
+      // Converter para scoreHistory
+      const scoreHistory = eloHistory.map(h => ({
+        score: normalizeEloToScore(h.elo, contestState.eloRange.min, contestState.eloRange.max),
+        timestamp: h.timestamp,
+        battleId: h.battleId
+      }));
+      
+      const chartDiv = document.createElement('div');
+      chartDiv.className = 'chart-item';
+      chartDiv.innerHTML = `
+        <div class="chart-header">
+          <img src="${photo.thumb}" alt="Foto ${idx + 1}" class="chart-thumb">
+          <div class="chart-title">#${idx + 1} - Score: ${photo.scoreData.score}/100 ${photo.scoreData.tier.icon}</div>
+        </div>
+        <canvas id="chart-${photo.id}" width="600" height="150"></canvas>
+      `;
+      chartsContainer.appendChild(chartDiv);
+      
+      setTimeout(() => {
+        renderScoreChart(`chart-${photo.id}`, scoreHistory);
+      }, 100);
+    });
+  }
+  
+  // Renderizar estatísticas gerais
+  const statsContainer = $('#resultsStats');
+  if (statsContainer) {
+    const totalBattles = contestState.battleHistory.length;
+    const totalPhotos = ranking.length;
+    const avgScore = ranking.reduce((sum, p) => sum + p.scoreData.score, 0) / totalPhotos;
+    const totalWins = ranking.reduce((sum, p) => sum + p.stats.wins, 0);
+    const totalLosses = ranking.reduce((sum, p) => sum + p.stats.losses, 0);
+    
+    statsContainer.innerHTML = `
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-value">${totalPhotos}</div>
+          <div class="stat-label">Fotos Participantes</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value">${totalBattles}</div>
+          <div class="stat-label">Total de Batalhas</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value">${Math.round(avgScore)}</div>
+          <div class="stat-label">Score Médio</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value">${totalWins}W / ${totalLosses}L</div>
+          <div class="stat-label">Recorde Total</div>
+        </div>
+      </div>
+    `;
+  }
   
   // Event listener para recomeçar
   $('#restartContest')?.addEventListener('click', confirmRestartContest);
