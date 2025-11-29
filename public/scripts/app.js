@@ -2476,6 +2476,17 @@ async function renderBattle() {
  */
 async function renderQualifyingBattle() {
   const container = $('#contestView');
+  if (!container) {
+    console.error('[DEBUG] renderQualifyingBattle: container não encontrado!');
+    return;
+  }
+  
+  if (!contestState || !contestState.qualifying) {
+    console.error('[DEBUG] renderQualifyingBattle: contestState ou qualifying não existe!');
+    await renderContestView();
+    return;
+  }
+  
   const { qualifying, eloScores, battleHistory, qualifiedPhotos } = contestState;
   
   console.log('[DEBUG] renderQualifyingBattle - qualifying:', qualifying);
@@ -2483,7 +2494,7 @@ async function renderQualifyingBattle() {
   console.log('[DEBUG] renderQualifyingBattle - pendingMatches:', qualifying?.pendingMatches?.length);
   
   // Se não há currentMatch, tentar pegar da fila
-  if (!qualifying.currentMatch && qualifying.pendingMatches.length > 0) {
+  if (!qualifying.currentMatch && qualifying.pendingMatches && qualifying.pendingMatches.length > 0) {
     console.log('[DEBUG] currentMatch vazio, pegando da fila');
     qualifying.currentMatch = qualifying.pendingMatches.shift() || null;
   }
@@ -2494,6 +2505,12 @@ async function renderQualifyingBattle() {
     console.log('[DEBUG] Sem mais batalhas - finalizando classificatória');
     // Sem mais batalhas - finalizar classificatória
     await finishQualifyingAndStartBracket();
+    return;
+  }
+  
+  if (!currentMatch.photoA || !currentMatch.photoB) {
+    console.error('[DEBUG] renderQualifyingBattle: currentMatch inválido!', currentMatch);
+    await renderContestView();
     return;
   }
   
@@ -4015,8 +4032,29 @@ function loadContestState() {
       qualifying: qualifying,
       bracket: bracket,
       eloScores: state.eloScores || {},
-      battleHistory: state.battleHistory || []
+      battleHistory: state.battleHistory || [],
+      photoStats: state.photoStats || {},
+      frozen: state.frozen || false,
+      eloRange: state.eloRange || { min: 1500, max: 1500 },
+      scoresAndTiers: state.scoresAndTiers || {}
     };
+    
+    // Se não há scoresAndTiers salvos, calcular agora
+    if (!state.scoresAndTiers || Object.keys(state.scoresAndTiers).length === 0) {
+      contestState.eloRange = calculateEloRange(contestState.eloScores);
+      contestState.scoresAndTiers = calculateScoresAndTiers(
+        contestState.eloScores,
+        contestState.eloRange.min,
+        contestState.eloRange.max
+      );
+    }
+    
+    console.log('[DEBUG] loadContestState - contestState reconstruído:', {
+      phase: contestState.phase,
+      qualifiedPhotos: contestState.qualifiedPhotos.length,
+      hasQualifying: !!contestState.qualifying,
+      hasBracket: !!contestState.bracket
+    });
     
   } catch (err) {
     console.error('Erro ao carregar estado do contest:', err);
