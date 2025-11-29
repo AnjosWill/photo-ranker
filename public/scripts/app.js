@@ -4231,8 +4231,27 @@ function loadContestState() {
       };
     }
     
+    // Migrar estados antigos: se phase é 'bracket', converter para 'final' ou 'finished'
+    let phase = state.phase;
+    if (phase === 'bracket') {
+      console.warn('[DEBUG] Estado antigo detectado (bracket), convertendo...');
+      // Se há bracket salvo, tentar determinar se está ativo ou finalizado
+      if (state.bracket && state.bracket.currentRound && state.bracket.rounds) {
+        const currentRound = state.bracket.rounds[state.bracket.currentRound - 1];
+        if (currentRound && currentRound.matches && currentRound.matches.length > 0) {
+          // Bracket ainda em andamento - converter para 'final' seria complicado
+          // Melhor resetar ou marcar como finished
+          phase = 'finished';
+        } else {
+          phase = 'finished';
+        }
+      } else {
+        phase = 'finished';
+      }
+    }
+    
     contestState = {
-      phase: state.phase,
+      phase: phase,
       qualifiedPhotos: qualifiedPhotos,
       qualifying: qualifying,
       final: final,
