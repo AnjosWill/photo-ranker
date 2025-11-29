@@ -2501,7 +2501,19 @@ function renderBracket() {
  */
 async function renderBattle() {
   const container = $('#contestView');
-  if (!container || !contestState) return;
+  if (!container) {
+    console.error('[DEBUG] renderBattle: contestView container não encontrado!');
+    return;
+  }
+  
+  if (!contestState) {
+    console.error('[DEBUG] renderBattle: contestState não existe!');
+    // Se não há contestState, renderizar estado inicial
+    await renderContestView();
+    return;
+  }
+  
+  console.log('[DEBUG] renderBattle chamado, phase:', contestState.phase);
   
   // Verificar se contest terminou
   if (contestState.phase === 'finished') {
@@ -2511,8 +2523,12 @@ async function renderBattle() {
   
   if (contestState.phase === 'qualifying') {
     await renderQualifyingBattle();
-  } else if (contestState.phase === 'bracket') {
-    await renderBracketBattle();
+  } else if (contestState.phase === 'final') {
+    await renderFinalBattle();
+  } else {
+    console.error('[DEBUG] renderBattle: phase desconhecida:', contestState.phase);
+    // Se phase é desconhecida, renderizar estado inicial
+    await renderContestView();
   }
 }
 
