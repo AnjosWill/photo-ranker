@@ -1901,42 +1901,76 @@ function calculatePhotoStats(photos, eloScores, battleHistory, cachedStats = nul
     if (stats[loser]) stats[loser].losses++;
   });
   
-  return calculateRankingFromStats(stats);
+  // Na fase final, priorizar W-L sobre Elo
+  const prioritizeWL = contestState?.phase === 'final';
+  return calculateRankingFromStats(stats, prioritizeWL);
 }
 
 /**
  * Calcula ranking a partir de stats (com critério de desempate)
  * @param {Object} stats - { photoId: {wins, losses, elo} }
+ * @param {boolean} prioritizeWL - Se true, prioriza W-L sobre Elo (para fase final)
  * @returns {Object} Stats com rank adicionado
  */
-function calculateRankingFromStats(stats) {
+function calculateRankingFromStats(stats, prioritizeWL = false) {
   // Ordenar com critério de desempate:
-  // 1. Elo (maior → menor)
-  // 2. Mais vitórias (maior → menor)
-  // 3. Menos derrotas (menor → maior)
-  // 4. ID (para consistência)
+  // Se prioritizeWL (fase final):
+  //   1. W-L (vitórias - perdas, maior → menor)
+  //   2. Mais vitórias (maior → menor)
+  //   3. Elo (maior → menor)
+  //   4. ID (para consistência)
+  // Senão (fase classificatória):
+  //   1. Elo (maior → menor)
+  //   2. Mais vitórias (maior → menor)
+  //   3. Menos derrotas (menor → maior)
+  //   4. ID (para consistência)
   const ranked = Object.entries(stats)
     .sort((a, b) => {
       const [idA, statsA] = a;
       const [idB, statsB] = b;
       
-      // 1. Elo
-      if (statsB.elo !== statsA.elo) {
-        return statsB.elo - statsA.elo;
+      if (prioritizeWL) {
+        // Fase final: priorizar W-L
+        const wlA = statsA.wins - statsA.losses;
+        const wlB = statsB.wins - statsB.losses;
+        
+        // 1. W-L (vitórias - perdas)
+        if (wlB !== wlA) {
+          return wlB - wlA;
+        }
+        
+        // 2. Mais vitórias
+        if (statsB.wins !== statsA.wins) {
+          return statsB.wins - statsA.wins;
+        }
+        
+        // 3. Elo
+        if (statsB.elo !== statsA.elo) {
+          return statsB.elo - statsA.elo;
+        }
+        
+        // 4. ID (para consistência)
+        return idA.localeCompare(idB);
+      } else {
+        // Fase classificatória: priorizar Elo
+        // 1. Elo
+        if (statsB.elo !== statsA.elo) {
+          return statsB.elo - statsA.elo;
+        }
+        
+        // 2. Mais vitórias
+        if (statsB.wins !== statsA.wins) {
+          return statsB.wins - statsA.wins;
+        }
+        
+        // 3. Menos derrotas
+        if (statsA.losses !== statsB.losses) {
+          return statsA.losses - statsB.losses;
+        }
+        
+        // 4. ID (para consistência)
+        return idA.localeCompare(idB);
       }
-      
-      // 2. Mais vitórias
-      if (statsB.wins !== statsA.wins) {
-        return statsB.wins - statsA.wins;
-      }
-      
-      // 3. Menos derrotas
-      if (statsA.losses !== statsB.losses) {
-        return statsA.losses - statsB.losses;
-      }
-      
-      // 4. ID (para consistência)
-      return idA.localeCompare(idB);
     })
     .map(([id], index) => ({ id, rank: index + 1 }));
   
@@ -2961,6 +2995,9 @@ async function renderBracketBattle() {
  * Renderiza ranking dinâmico
  */
 function renderDynamicRanking(photos, photoStats) {
+  // Na fase final, ordenar por W-L primeiro; senão, por score
+  const isFinal = contestState?.phase === 'final';
+  
   const ranked = [...photos]
     .map(p => ({ 
       ...p, 
@@ -2968,14 +3005,36 @@ function renderDynamicRanking(photos, photoStats) {
       scoreData: contestState.scoresAndTiers[p.id] || { score: 50, tier: TIERS[4] }
     }))
     .sort((a, b) => {
-      // Ordenar por score (maior → menor)
-      if (b.scoreData.score !== a.scoreData.score) {
-        return b.scoreData.score - a.scoreData.score;
+      if (isFinal) {
+        // Fase final: ordenar por W-L primeiro
+        const wlA = a.stats.wins - a.stats.losses;
+        const wlB = b.stats.wins - b.stats.losses;
+        
+        // 1. W-L (vitórias - perdas)
+        if (wlB !== wlA) {
+          return wlB - wlA;
+        }
+        
+        // 2. Mais vitórias
+        if (b.stats.wins !== a.stats.wins) {
+          return b.stats.wins - a.stats.wins;
+        }
+        
+        // 3. Score
+        if (b.scoreData.score !== a.scoreData.score) {
+          return b.scoreData.score - a.scoreData.score;
+        }
+      } else {
+        // Fase classificatória: ordenar por score primeiro
+        if (b.scoreData.score !== a.scoreData.score) {
+          return b.scoreData.score - a.scoreData.score;
+        }
+        // Desempate: mais vitórias
+        if (b.stats.wins !== a.stats.wins) {
+          return b.stats.wins - a.stats.wins;
+        }
       }
-      // Desempate: mais vitórias
-      if (b.stats.wins !== a.stats.wins) {
-        return b.stats.wins - a.stats.wins;
-      }
+      
       return a.id.localeCompare(b.id);
     });
   
@@ -3045,6 +3104,10 @@ function renderRankingOverlay() {
   const photoStats = calculatePhotoStats(photos, eloScores, battleHistory, contestState.photoStats);
   // Atualizar cache
   contestState.photoStats = photoStats;
+  
+  // Na fase final, ordenar por W-L primeiro; senão, por score
+  const isFinal = contestState.phase === 'final';
+  
   const ranked = [...photos]
     .map(p => ({ 
       ...p, 
@@ -3052,14 +3115,36 @@ function renderRankingOverlay() {
       scoreData: scoresAndTiers[p.id] || { score: 50, tier: TIERS[4] }
     }))
     .sort((a, b) => {
-      // Ordenar por score (maior → menor)
-      if (b.scoreData.score !== a.scoreData.score) {
-        return b.scoreData.score - a.scoreData.score;
+      if (isFinal) {
+        // Fase final: ordenar por W-L primeiro
+        const wlA = a.stats.wins - a.stats.losses;
+        const wlB = b.stats.wins - b.stats.losses;
+        
+        // 1. W-L (vitórias - perdas)
+        if (wlB !== wlA) {
+          return wlB - wlA;
+        }
+        
+        // 2. Mais vitórias
+        if (b.stats.wins !== a.stats.wins) {
+          return b.stats.wins - a.stats.wins;
+        }
+        
+        // 3. Score
+        if (b.scoreData.score !== a.scoreData.score) {
+          return b.scoreData.score - a.scoreData.score;
+        }
+      } else {
+        // Fase classificatória: ordenar por score primeiro
+        if (b.scoreData.score !== a.scoreData.score) {
+          return b.scoreData.score - a.scoreData.score;
+        }
+        // Desempate: mais vitórias
+        if (b.stats.wins !== a.stats.wins) {
+          return b.stats.wins - a.stats.wins;
+        }
       }
-      // Desempate: mais vitórias
-      if (b.stats.wins !== a.stats.wins) {
-        return b.stats.wins - a.stats.wins;
-      }
+      
       return a.id.localeCompare(b.id);
     });
   
@@ -3816,20 +3901,25 @@ async function handleQualifyingBattle(winner) {
       phase: 'qualifying'
     });
     
-    // Atualizar cache de stats incrementalmente
-    if (!contestState.photoStats[winnerId]) {
-      contestState.photoStats[winnerId] = { wins: 0, losses: 0, elo: contestState.eloScores[winnerId] };
-    }
-    if (!contestState.photoStats[loserId]) {
-      contestState.photoStats[loserId] = { wins: 0, losses: 0, elo: contestState.eloScores[loserId] };
-    }
-    contestState.photoStats[winnerId].wins++;
-    contestState.photoStats[winnerId].elo = contestState.eloScores[winnerId];
-    contestState.photoStats[loserId].losses++;
-    contestState.photoStats[loserId].elo = contestState.eloScores[loserId];
-    
-    // Recalcular ranking (Elo mudou)
-    contestState.photoStats = calculateRankingFromStats(contestState.photoStats);
+  // Atualizar cache de stats incrementalmente
+  if (!contestState.photoStats[winnerId]) {
+    contestState.photoStats[winnerId] = { wins: 0, losses: 0, elo: contestState.eloScores[winnerId] };
+  }
+  if (!contestState.photoStats[loserId]) {
+    contestState.photoStats[loserId] = { wins: 0, losses: 0, elo: contestState.eloScores[loserId] };
+  }
+  contestState.photoStats[winnerId].wins++;
+  contestState.photoStats[winnerId].elo = contestState.eloScores[winnerId];
+  contestState.photoStats[loserId].losses++;
+  contestState.photoStats[loserId].elo = contestState.eloScores[loserId];
+  
+  // Recalcular ranking
+  // Na fase final, priorizar W-L sobre Elo
+  const prioritizeWL = contestState.phase === 'final';
+  contestState.photoStats = calculateRankingFromStats(contestState.photoStats, prioritizeWL);
+  
+  // IMPORTANTE: Na fase final, o score permanece congelado (não atualizar baseado em Elo)
+  // O ranking é determinado por W-L, não por Elo/score
     
     // Validar consistência (apenas em desenvolvimento)
     if (console && console.warn) {
@@ -4087,7 +4177,7 @@ async function handleFinalBattle(winner) {
   const winnerId = winnerPhoto.id;
   const loserId = loserPhoto.id;
   
-  // Atualizar Elo (continuar atualizando na fase final)
+  // Atualizar Elo (continuar atualizando na fase final para histórico, mas score permanece congelado)
   const result = calculateElo(
     eloScores[winnerId] || 1500,
     eloScores[loserId] || 1500,
@@ -4110,6 +4200,9 @@ async function handleFinalBattle(winner) {
       battleId: `${winnerId}-${loserId}`
     });
   }
+  
+  // IMPORTANTE: Na fase final, o score permanece congelado (não atualizar baseado em Elo)
+  // O ranking é determinado por W-L, não por Elo/score
   
   // Salvar no histórico
   contestState.battleHistory.push({
@@ -4166,7 +4259,7 @@ async function handleFinalBattle(winner) {
 async function finishFinalPhase() {
   const { final, eloScores, battleHistory } = contestState;
   
-  // Calcular ranking final baseado em Elo (ou score se preferir)
+  // Calcular ranking final baseado em W-L (vitórias - perdas)
   const photoStats = calculatePhotoStats(
     final.finalPhotos,
     eloScores,
@@ -4174,26 +4267,39 @@ async function finishFinalPhase() {
     {}
   );
   
-  // Ordenar por Elo (maior → menor)
+  // Recalcular ranking priorizando W-L (fase final)
+  const statsWithRank = calculateRankingFromStats(photoStats, true);
+  
+  // Ordenar por W-L (vitórias - perdas, maior → menor)
   const ranked = [...final.finalPhotos]
     .map(p => ({
       ...p,
-      stats: photoStats[p.id]
+      stats: statsWithRank[p.id]
     }))
     .sort((a, b) => {
-      const eloA = eloScores[a.id] || 1500;
-      const eloB = eloScores[b.id] || 1500;
-      if (eloB !== eloA) {
-        return eloB - eloA;
+      const wlA = a.stats.wins - a.stats.losses;
+      const wlB = b.stats.wins - b.stats.losses;
+      
+      // 1. W-L (vitórias - perdas)
+      if (wlB !== wlA) {
+        return wlB - wlA;
       }
-      // Desempate: mais vitórias
+      
+      // 2. Mais vitórias
       if (b.stats.wins !== a.stats.wins) {
         return b.stats.wins - a.stats.wins;
       }
+      
+      // 3. Menos perdas
+      if (a.stats.losses !== b.stats.losses) {
+        return a.stats.losses - b.stats.losses;
+      }
+      
+      // 4. ID (para consistência)
       return a.id.localeCompare(b.id);
     });
   
-  // Campeã é a primeira do ranking
+  // Campeã é a primeira do ranking (maior W-L)
   const championId = ranked[0].id;
   
   contestState.phase = 'finished';
