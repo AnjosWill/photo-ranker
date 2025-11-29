@@ -2479,14 +2479,11 @@ body.selection-mode .split-btn {
   overflow-x: auto;
 }
 
-.heatmap-header {
-  margin-bottom: var(--gap-3);
-}
-
 .heatmap-legend {
   display: flex;
   gap: var(--gap-3);
   justify-content: center;
+  margin-bottom: var(--gap-3);
 }
 
 .legend-item {
