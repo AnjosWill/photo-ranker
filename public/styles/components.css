@@ -2226,6 +2226,102 @@ body.selection-mode .split-btn {
   color: #ff6b6b;
 }
 
+/* Heatmap de Confrontos */
+.heatmap-container {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 16px;
+  padding: var(--gap-4);
+  overflow-x: auto;
+}
+
+.heatmap-header {
+  margin-bottom: var(--gap-3);
+}
+
+.heatmap-legend {
+  display: flex;
+  gap: var(--gap-3);
+  justify-content: center;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #fff;
+  font-size: 14px;
+}
+
+.legend-color {
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.heatmap-table {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.heatmap-row {
+  display: flex;
+  gap: 2px;
+}
+
+.heatmap-cell {
+  width: 50px;
+  height: 50px;
+  display: grid;
+  place-items: center;
+  border-radius: 4px;
+  font-size: 12px;
+  transition: all 0.2s ease;
+}
+
+.heatmap-header-row .heatmap-cell,
+.heatmap-row .heatmap-cell:first-child {
+  background: rgba(106, 163, 255, 0.1);
+  border: 1px solid rgba(106, 163, 255, 0.3);
+}
+
+.heatmap-corner {
+  background: transparent !important;
+  border: none !important;
+}
+
+.heatmap-thumb-small {
+  width: 40px;
+  height: 40px;
+  object-fit: cover;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.heatmap-diagonal {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.heatmap-battled {
+  background: rgba(61, 220, 151, 0.3);
+  border: 1px solid rgba(61, 220, 151, 0.5);
+  color: #3ddc97;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.heatmap-battled:hover {
+  background: rgba(61, 220, 151, 0.5);
+  transform: scale(1.1);
+}
+
+.heatmap-not-battled {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
 /* Mobile: layout vertical */
 @media (max-width: 1024px) {
   .battle-with-ranking {

@@ -2373,6 +2373,9 @@ async function renderQualifyingBattle() {
         <button class="btn btn-secondary" id="toggleRankingView" data-tooltip="Ver Ranking Completo">
           📊 Ranking
         </button>
+        <button class="btn btn-secondary" id="toggleHeatmap" data-tooltip="Heatmap de Confrontos">
+          🔥 Heatmap
+        </button>
         <button class="btn btn-secondary" id="toggleBracket" data-tooltip="Prévia do Bracket">
           🏆 Prévia Bracket
         </button>
@@ -2382,6 +2385,7 @@ async function renderQualifyingBattle() {
     
     <!-- Overlays -->
     ${renderRankingOverlay()}
+    ${renderHeatmapOverlay()}
     ${renderBracketPreviewOverlay()}
   `;
   
@@ -2390,6 +2394,7 @@ async function renderQualifyingBattle() {
   $('#battlePhotoB')?.addEventListener('click', () => chooseBattleWinner('B'));
   $('#cancelContest')?.addEventListener('click', confirmCancelContest);
   $('#toggleRankingView')?.addEventListener('click', () => toggleOverlay('rankingOverlay'));
+  $('#toggleHeatmap')?.addEventListener('click', () => toggleOverlay('heatmapOverlay'));
   $('#toggleBracket')?.addEventListener('click', () => toggleOverlay('bracketPreviewOverlay'));
   
   document.addEventListener('keydown', handleBattleKeys);
@@ -2512,6 +2517,12 @@ function toggleOverlay(overlayId) {
     if (container) {
       container.innerHTML = renderBracketTree();
     }
+  } else if (!isHidden && overlayId === 'heatmapOverlay') {
+    // Atualizar heatmap
+    const container = $('#heatmapContent');
+    if (container) {
+      container.innerHTML = renderHeatmap();
+    }
   }
 }
 
@@ -2595,6 +2606,95 @@ function renderBracketPreview() {
   
   html += '</div></div>';
   return html;
+}
+
+/**
+ * Renderiza heatmap de confrontos
+ */
+function renderHeatmap() {
+  if (!contestState || contestState.phase !== 'qualifying') return '';
+  
+  const { qualifiedPhotos, battleHistory } = contestState;
+  
+  // Criar matriz de confrontos
+  const matrix = {};
+  qualifiedPhotos.forEach(p => {
+    matrix[p.id] = {};
+    qualifiedPhotos.forEach(p2 => {
+      if (p.id !== p2.id) {
+        matrix[p.id][p2.id] = 0; // 0 = não batalharam
+      }
+    });
+  });
+  
+  // Preencher com histórico
+  battleHistory.forEach(b => {
+    if (matrix[b.photoA] && matrix[b.photoA][b.photoB] !== undefined) {
+      matrix[b.photoA][b.photoB] = 1; // 1 = batalharam
+      matrix[b.photoB][b.photoA] = 1;
+    }
+  });
+  
+  let html = '<div class="heatmap-container">';
+  html += '<div class="heatmap-header">';
+  html += '<div class="heatmap-legend">';
+  html += '<span class="legend-item"><span class="legend-color" style="background: rgba(61, 220, 151, 0.3)"></span> Batalharam</span>';
+  html += '<span class="legend-item"><span class="legend-color" style="background: rgba(255, 255, 255, 0.05)"></span> Não batalharam</span>';
+  html += '</div>';
+  html += '</div>';
+  
+  html += '<div class="heatmap-table">';
+  html += '<div class="heatmap-row heatmap-header-row">';
+  html += '<div class="heatmap-cell heatmap-corner"></div>';
+  qualifiedPhotos.forEach(p => {
+    html += `<div class="heatmap-cell heatmap-header-cell" title="${p.id}">`;
+    html += `<img src="${p.thumb}" class="heatmap-thumb-small">`;
+    html += `</div>`;
+  });
+  html += '</div>';
+  
+  qualifiedPhotos.forEach((photoA, idxA) => {
+    html += '<div class="heatmap-row">';
+    html += `<div class="heatmap-cell heatmap-header-cell" title="${photoA.id}">`;
+    html += `<img src="${photoA.thumb}" class="heatmap-thumb-small">`;
+    html += `</div>`;
+    
+    qualifiedPhotos.forEach((photoB, idxB) => {
+      if (photoA.id === photoB.id) {
+        html += '<div class="heatmap-cell heatmap-diagonal"></div>';
+      } else {
+        const hasBattled = matrix[photoA.id][photoB.id] === 1;
+        html += `<div class="heatmap-cell ${hasBattled ? 'heatmap-battled' : 'heatmap-not-battled'}" 
+                      title="${photoA.id} vs ${photoB.id}: ${hasBattled ? 'Batalharam' : 'Não batalharam'}">
+                  ${hasBattled ? '✓' : ''}
+                </div>`;
+      }
+    });
+    
+    html += '</div>';
+  });
+  
+  html += '</div></div>';
+  return html;
+}
+
+/**
+ * Renderiza overlay do heatmap
+ */
+function renderHeatmapOverlay() {
+  if (!contestState || contestState.phase !== 'qualifying') return '';
+  
+  return `
+    <div class="contest-overlay" id="heatmapOverlay" aria-hidden="true">
+      <div class="overlay-header">
+        <h3>Heatmap de Confrontos</h3>
+        <button class="overlay-close" onclick="toggleOverlay('heatmapOverlay')" aria-label="Fechar">&times;</button>
+      </div>
+      <div class="overlay-content" id="heatmapContent">
+        ${renderHeatmap()}
+      </div>
+    </div>
+  `;
 }
 
 /**
