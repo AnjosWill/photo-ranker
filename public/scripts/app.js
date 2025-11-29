@@ -4202,28 +4202,6 @@ async function finishQualifyingAndStartBracket() {
     }
   }
   
-  // Continuar apenas se finalPhotos.length >= 2
-  if (finalPhotos.length < 2) {
-    // Se não há fotos suficientes com score > 50, usar as top 2 do ranking
-    const topPhotos = ranked.slice(0, Math.max(2, ranked.length));
-    console.log('[DEBUG] Nenhuma foto com score > 50, usando top', topPhotos.length, 'fotos');
-    
-    if (topPhotos.length < 2) {
-      // Se não há fotos suficientes, finalizar contest
-      contestState.phase = 'finished';
-      saveContestState();
-      toast(`🏆 Contest finalizado! Apenas ${topPhotos.length} foto(s) participaram.`);
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      location.hash = '#/results';
-      return;
-    }
-    
-    // Usar top photos como finalPhotos
-    const finalPhotosToUse = topPhotos;
-    // Continuar com finalPhotosToUse em vez de finalPhotos
-    // (vou ajustar o código abaixo)
-  }
-  
   // Gerar batalhas "todas contra todas" para a fase final
   // IMPORTANTE: Apenas batalhas que ainda NÃO foram travadas entre as fotos finais
   // Considerar batalhas tanto da classificatória quanto da fase final (se houver)
