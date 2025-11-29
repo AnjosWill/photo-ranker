@@ -3470,11 +3470,9 @@ function renderHeatmap() {
   });
   
   let html = '<div class="heatmap-container">';
-  html += '<div class="heatmap-header">';
   html += '<div class="heatmap-legend">';
   html += '<span class="legend-item"><span class="legend-color" style="background: rgba(61, 220, 151, 0.3)"></span> Batalharam</span>';
   html += '<span class="legend-item"><span class="legend-color" style="background: rgba(255, 255, 255, 0.05)"></span> Não batalharam</span>';
-  html += '</div>';
   html += '</div>';
   
   html += '<div class="heatmap-table">';
