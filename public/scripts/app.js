@@ -5051,14 +5051,10 @@ async function renderResultsView() {
       </div>
     </div>
     
-      </div>
-    </div>
-    
     <!-- Heatmap (Painel Separado) -->
     <div class="results-heatmap-section">
       <h3>Heatmap de Confrontos</h3>
       <div id="resultsHeatmap" class="dashboard-heatmap"></div>
-    </div>
     </div>
     
     <!-- Ações -->
