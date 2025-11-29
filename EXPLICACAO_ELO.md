@@ -213,5 +213,136 @@ R: Sim! Cada novo contest começa com todos em 1500 novamente.
 
 ---
 
+## 🎮 Sistema de Fases
+
+O contest funciona em **2 fases**:
+
+### 1️⃣ **Fase Classificatória**
+
+- **Objetivo:** Estabelecer ranking inicial através de batalhas controladas
+- **Batalhas:** Cada foto batalha 4-6 vezes (dependendo do total de fotos)
+- **Elo:** Atualiza após **cada batalha** em tempo real
+- **Ranking:** Dinâmico, atualiza automaticamente após cada voto
+- **Resultado:** Top N (potência de 2) avançam para o Bracket Final
+
+**Exemplo:**
+- 8 fotos → Top 8 avançam
+- 12 fotos → Top 8 avançam (mais próximo de potência de 2)
+- 20 fotos → Top 16 avançam
+
+### 2️⃣ **Fase Bracket (Eliminatória)**
+
+- **Objetivo:** Determinar campeão através de eliminatória
+- **Batalhas:** Eliminatória simples (vencedor avança, perdedor é eliminado)
+- **Elo:** Atualiza opcionalmente (pode continuar atualizando ou manter do classificatória)
+- **Ranking:** Baseado no ranking final da classificatória
+- **Resultado:** Campeão definido
+
+---
+
+## ⚡ Apresentação em Tempo Real
+
+### ✅ Atualiza em Tempo Real:
+
+1. **Ranking Dinâmico (Sidebar)**
+   - Atualiza automaticamente após cada voto
+   - Mostra posição, Power Level e recorde (W-L)
+   - Sem necessidade de recarregar
+
+2. **Cards de Batalha (Principal)**
+   - Atualiza automaticamente após cada voto
+   - Mostra Power Level, Rank e recorde das fotos em batalha
+
+### ❌ NÃO Atualiza em Tempo Real (Snapshot):
+
+1. **Ranking Completo (Overlay)** - Apenas ao abrir
+2. **Heatmap de Confrontos** - Apenas ao abrir
+3. **Prévia do Bracket** - Apenas ao abrir
+4. **Modal de Detalhes** - Apenas ao abrir
+5. **Árvore do Bracket** - Apenas ao abrir
+
+**Dica:** Para ver dados atualizados, feche e reabra o overlay/modal.
+
+---
+
+## 📊 Botões de Estatísticas
+
+### Na Fase Classificatória:
+
+**📊 Ranking** - Ver ranking completo
+- Lista todas as fotos ordenadas por Power Level
+- Mostra posição, Power Level, recorde (W-L)
+- Botão "Ver Detalhes" para cada foto
+
+**🔥 Heatmap** - Matriz de confrontos
+- Mostra quais fotos já batalharam (verde) ou não (cinza)
+- Visualização rápida de confrontos realizados
+
+**🏆 Prévia Bracket** - Como será o bracket final
+- Mostra top N do ranking atual
+- Estrutura de rodadas do bracket
+- Dinâmico: muda conforme ranking muda
+
+**Ver Detalhes** (em cada foto)
+- Gráfico de evolução do Power Level
+- Timeline de todas as batalhas
+- Stats completos (Power Level, ranking, recorde)
+
+### Na Fase Bracket:
+
+**🏆 Bracket** - Árvore completa do bracket
+- Visualização completa da eliminatória
+- Vencedores marcados
+- Power Level e votos de cada confronto
+
+---
+
+## 🎯 Critério de Ranking e Desempate
+
+O ranking é ordenado por:
+
+1. **Power Level (Elo)** - Maior → Menor
+2. **Mais Vitórias** - Maior → Menor (em caso de empate em Elo)
+3. **Menos Derrotas** - Menor → Maior (em caso de empate em vitórias)
+4. **ID da Foto** - Para consistência (em caso de empate total)
+
+**Exemplo de Empate:**
+```
+Foto A: Elo 1520, 3W-1L → Rank #1
+Foto B: Elo 1520, 2W-2L → Rank #2 (menos vitórias)
+Foto C: Elo 1500, 1W-3L → Rank #3
+```
+
+---
+
+## 🚀 Melhorias Implementadas
+
+### Performance:
+- ✅ Cache de stats para evitar recálculos excessivos
+- ✅ Atualização incremental após cada batalha
+- ✅ Otimização de cálculos de ranking
+
+### Robustez:
+- ✅ Validação de consistência do estado
+- ✅ Critério de desempate definido
+- ✅ Tratamento de erros em cálculos
+
+### UX:
+- ✅ Timeline ordenada por timestamp
+- ✅ Gráfico mostra mensagem se histórico insuficiente
+- ✅ Feedback visual de mudanças
+
+---
+
+## 📚 Documentação Adicional
+
+Para mais detalhes técnicos, consulte:
+- `docs/ELO_ANALYSIS.md` - Análise completa da lógica
+- `docs/REALTIME_UPDATES.md` - Mapeamento de atualizações em tempo real
+- `docs/STATISTICS.md` - Documentação de botões e visualizações
+- `docs/ROBUSTNESS_ISSUES.md` - Problemas identificados e soluções
+
+---
+
 **Ficou claro? Se tiver mais dúvidas, me avise!** 😊
 

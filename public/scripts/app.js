@@ -1920,6 +1920,51 @@ function calculateRankingFromStats(stats) {
 }
 
 /**
+ * Valida consistência do estado do contest
+ * @returns {Object} { valid: boolean, errors: string[] }
+ */
+function validateContestState() {
+  const errors = [];
+  
+  if (!contestState) {
+    return { valid: false, errors: ['contestState não existe'] };
+  }
+  
+  const { eloScores, battleHistory, qualifiedPhotos } = contestState;
+  
+  // Validar: soma de wins/losses = total de batalhas
+  const totalBattles = battleHistory.length;
+  const totalWins = Object.values(contestState.photoStats || {}).reduce((sum, s) => sum + (s.wins || 0), 0);
+  const totalLosses = Object.values(contestState.photoStats || {}).reduce((sum, s) => sum + (s.losses || 0), 0);
+  
+  if (totalWins + totalLosses !== totalBattles * 2) {
+    errors.push(`Inconsistência: wins (${totalWins}) + losses (${totalLosses}) ≠ batalhas × 2 (${totalBattles * 2})`);
+  }
+  
+  // Validar: todas as fotos têm Elo
+  qualifiedPhotos.forEach(p => {
+    if (!eloScores[p.id] && eloScores[p.id] !== 0) {
+      errors.push(`Foto ${p.id} não tem Elo definido`);
+    }
+  });
+  
+  // Validar: battleHistory tem todas as informações necessárias
+  battleHistory.forEach((battle, idx) => {
+    if (!battle.photoA || !battle.photoB || !battle.winner) {
+      errors.push(`Batalha ${idx} está incompleta`);
+    }
+    if (battle.winner !== battle.photoA && battle.winner !== battle.photoB) {
+      errors.push(`Batalha ${idx}: winner não é photoA nem photoB`);
+    }
+  });
+  
+  return {
+    valid: errors.length === 0,
+    errors: errors
+  };
+}
+
+/**
  * Calcula número de batalhas por foto na fase classificatória
  * @param {number} totalPhotos - Total de fotos
  * @returns {number} Batalhas por foto
@@ -3358,6 +3403,14 @@ async function handleQualifyingBattle(winner) {
     
     // Recalcular ranking (Elo mudou)
     contestState.photoStats = calculateRankingFromStats(contestState.photoStats);
+    
+    // Validar consistência (apenas em desenvolvimento)
+    if (console && console.warn) {
+      const validation = validateContestState();
+      if (!validation.valid) {
+        console.warn('[DEBUG] Inconsistências detectadas:', validation.errors);
+      }
+    }
     
     console.log('[DEBUG] Batalha salva no histórico');
     
