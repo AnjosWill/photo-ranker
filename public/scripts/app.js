@@ -1846,13 +1846,34 @@ async function startContest() {
 }
 
 /**
+ * Verifica se duas fotos já batalharam antes e retorna a vencedora
+ * @param {string} photoAId - ID da foto A
+ * @param {string} photoBId - ID da foto B
+ * @param {Array} battleHistory - Histórico de batalhas
+ * @returns {string|null} 'A' ou 'B' se já batalharam, null caso contrário
+ */
+function getPreviousWinner(photoAId, photoBId, battleHistory) {
+  for (const battle of battleHistory) {
+    const battleIds = [battle.photoA, battle.photoB].sort();
+    const currentIds = [photoAId, photoBId].sort();
+    
+    // Verificar se são as mesmas fotos (ordem não importa)
+    if (battleIds[0] === currentIds[0] && battleIds[1] === currentIds[1]) {
+      // Retornar 'A' se photoA venceu, 'B' se photoB venceu
+      return battle.winner === photoAId ? 'A' : 'B';
+    }
+  }
+  return null;
+}
+
+/**
  * Renderiza interface de confronto
  */
-function renderBattle() {
+async function renderBattle() {
   const container = $('#contestView');
   if (!container || !contestState) return;
   
-  const { allMatches, currentMatchIndex, eloScores, currentRound, totalRounds } = contestState;
+  const { allMatches, currentMatchIndex, eloScores, currentRound, totalRounds, battleHistory } = contestState;
   
   // Verificar se contest terminou
   if (currentMatchIndex >= allMatches.length) {
@@ -1863,6 +1884,24 @@ function renderBattle() {
   const currentMatch = allMatches[currentMatchIndex];
   const photoA = currentMatch.photoA;
   const photoB = currentMatch.photoB;
+  
+  // Verificar se essas fotos já batalharam antes
+  const previousWinner = getPreviousWinner(photoA.id, photoB.id, battleHistory);
+  
+  if (previousWinner) {
+    // Já batalharam! Usar vencedora anterior automaticamente
+    const winnerPhoto = previousWinner === 'A' ? photoA : photoB;
+    toast(`⚡ Confronto automático: ${previousWinner === 'A' ? 'Foto A' : 'Foto B'} já venceu antes! (sem nova comparação)`);
+    
+    // Aguardar um pouco para o usuário ver o toast
+    await new Promise(resolve => setTimeout(resolve, 1200));
+    
+    // Registrar vitória automática (Elo ainda é recalculado, mas vitória é automática)
+    await chooseBattleWinner(previousWinner);
+    return; // chooseBattleWinner já chama renderBattle() novamente
+  }
+  
+  // Se não batalharam antes, renderizar confronto normal
   const eloA = eloScores[photoA.id] || 1500;
   const eloB = eloScores[photoB.id] || 1500;
   
@@ -2001,7 +2040,7 @@ async function chooseBattleWinner(winner) {
     // Continuar na mesma rodada
     saveContestState();
     await new Promise(resolve => setTimeout(resolve, 800));
-    renderBattle();
+    await renderBattle(); // Aguardar renderBattle (pode ser automático)
   }
 }
 
@@ -2058,7 +2097,7 @@ async function advanceToNextRound() {
   toast(`Rodada ${nextRound} iniciada! ${nextRoundBracket.rounds[0]?.length || 0} confrontos.`);
   await new Promise(resolve => setTimeout(resolve, 800));
   
-  renderBattle();
+  await renderBattle(); // Aguardar renderBattle (pode ser automático)
 }
 
 /**
