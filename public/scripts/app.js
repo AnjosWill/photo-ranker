@@ -3320,8 +3320,27 @@ async function handleQualifyingBattle(winner) {
     }
     
     // Próxima batalha da fila
-    contestState.qualifying.currentMatch = contestState.qualifying.pendingMatches.shift() || null;
+    // IMPORTANTE: Filtrar matches que já foram batalhadas (caso tenha sido adicionada depois)
+    const remainingMatches = contestState.qualifying.pendingMatches.filter(match => {
+      const pairKey = [match.photoA.id, match.photoB.id].sort().join('-');
+      return !contestState.battleHistory.some(b => {
+        const battleKey = [b.photoA, b.photoB].sort().join('-');
+        return battleKey === pairKey;
+      });
+    });
+    
+    contestState.qualifying.pendingMatches = remainingMatches;
+    contestState.qualifying.currentMatch = remainingMatches.shift() || null;
+    
     console.log('[DEBUG] Próxima batalha:', contestState.qualifying.currentMatch);
+    console.log('[DEBUG] Batalhas restantes na fila:', remainingMatches.length);
+    
+    // Se não há mais batalhas válidas, finalizar
+    if (!contestState.qualifying.currentMatch && remainingMatches.length === 0) {
+      console.log('[DEBUG] Não há mais batalhas válidas - finalizando classificatória');
+      await finishQualifyingAndStartBracket();
+      return;
+    }
     
     saveContestState();
     console.log('[DEBUG] Estado salvo');
