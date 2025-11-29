@@ -1136,6 +1136,19 @@ body.selection-mode .split-btn {
   margin: 0;
 }
 
+/* Container principal das imagens - ocupa toda largura */
+.battle-container-full {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  gap: var(--gap-4);
+  align-items: center;
+  width: 100%;
+  max-width: 100%;
+  margin: 0;
+  padding: 0;
+  position: relative;
+}
+
 .battle-photo {
   position: relative;
   background: #000;
@@ -1145,6 +1158,13 @@ body.selection-mode .split-btn {
   transition: all 0.25s ease;
   border: 3px solid transparent;
   max-height: 600px;
+}
+
+/* Imagens grandes no container full */
+.battle-container-full .battle-photo {
+  max-height: 80vh;
+  min-height: 500px;
+  width: 100%;
 }
 
 .battle-photo:hover {
@@ -1163,6 +1183,11 @@ body.selection-mode .split-btn {
   object-fit: contain;
   display: block;
   max-height: 600px;
+}
+
+.battle-container-full .battle-photo img {
+  max-height: 80vh;
+  min-height: 500px;
 }
 
 .battle-label {
@@ -1322,6 +1347,25 @@ body.selection-mode .split-btn {
   flex-shrink: 0;
 }
 
+/* Ranking discreto no lado direito - grudado na borda */
+.dynamic-ranking-sidebar {
+  position: fixed;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  background: rgba(0, 0, 0, 0.85);
+  backdrop-filter: blur(12px);
+  border-radius: 12px 0 0 12px;
+  padding: var(--gap-2);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-right: none;
+  max-height: 70vh;
+  overflow-y: auto;
+  width: 180px;
+  z-index: 100;
+  box-shadow: -4px 0 16px rgba(0, 0, 0, 0.3);
+}
+
 .dynamic-ranking h4 {
   margin: 0 0 var(--gap-1) 0;
   color: var(--brand);
@@ -1329,6 +1373,16 @@ body.selection-mode .split-btn {
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.5px;
+}
+
+.dynamic-ranking-sidebar h4 {
+  margin: 0 0 var(--gap-1) 0;
+  color: var(--brand);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  text-align: center;
 }
 
 .ranking-list {
@@ -1346,6 +1400,56 @@ body.selection-mode .split-btn {
   border-radius: 6px;
   transition: all 0.2s ease;
   font-size: 12px;
+}
+
+/* Ranking items menores na sidebar */
+.dynamic-ranking-sidebar .ranking-item {
+  padding: 4px 6px;
+  gap: 4px;
+  font-size: 10px;
+}
+
+.dynamic-ranking-sidebar .ranking-position {
+  font-size: 10px;
+  min-width: 20px;
+  font-weight: 700;
+}
+
+.dynamic-ranking-sidebar .ranking-thumb {
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+}
+
+.dynamic-ranking-sidebar .ranking-details {
+  gap: 1px;
+  min-width: 0;
+  flex: 1;
+}
+
+.dynamic-ranking-sidebar .tier-badge-small {
+  padding: 3px 6px;
+  min-width: 50px;
+  border-radius: 6px;
+}
+
+.dynamic-ranking-sidebar .tier-badge-small .tier-icon {
+  font-size: 14px;
+  margin-bottom: 1px;
+}
+
+.dynamic-ranking-sidebar .tier-badge-small .tier-score {
+  font-size: 10px;
+  margin-bottom: 0;
+}
+
+.dynamic-ranking-sidebar .tier-badge-small .tier-label {
+  font-size: 7px;
+}
+
+.dynamic-ranking-sidebar .ranking-record {
+  font-size: 9px;
+  opacity: 0.8;
 }
 
 .ranking-item:hover {

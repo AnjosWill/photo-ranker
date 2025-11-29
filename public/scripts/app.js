@@ -2647,38 +2647,37 @@ async function renderQualifyingBattle() {
         </span>
       </div>
       
-      <div class="battle-with-ranking">
-        <div class="battle-container">
-          <!-- Foto A -->
-          <div class="battle-photo" id="battlePhotoA" tabindex="0" role="button" aria-label="Escolher Foto A (1 ou ←)">
-            <img src="${photoA.thumb}" alt="Foto A">
-            <div class="battle-label">1</div>
-            <div class="battle-info">
-              <div class="battle-rank">#${statsA.rank} | ${statsA.wins}W-${statsA.losses}L</div>
-            </div>
-          </div>
-          
-          <!-- VS -->
-          <div class="battle-vs">
-            <span>VS</span>
-          </div>
-          
-          <!-- Foto B -->
-          <div class="battle-photo" id="battlePhotoB" tabindex="0" role="button" aria-label="Escolher Foto B (2 ou →)">
-            <img src="${photoB.thumb}" alt="Foto B">
-            <div class="battle-label">2</div>
-            <div class="battle-info">
-              <div class="battle-rank">#${statsB.rank} | ${statsB.wins}W-${statsB.losses}L</div>
-            </div>
+      <!-- Container principal das imagens - ocupa toda largura -->
+      <div class="battle-container-full">
+        <!-- Foto A -->
+        <div class="battle-photo" id="battlePhotoA" tabindex="0" role="button" aria-label="Escolher Foto A (1 ou ←)">
+          <img src="${photoA.thumb}" alt="Foto A">
+          <div class="battle-label">1</div>
+          <div class="battle-info">
+            <div class="battle-rank">#${statsA.rank} | ${statsA.wins}W-${statsA.losses}L</div>
           </div>
         </div>
         
-        <!-- Ranking dinâmico -->
-        <div class="dynamic-ranking">
-          <h4>Ranking</h4>
-          <div class="ranking-list">
-            ${renderDynamicRanking(qualifiedPhotos, photoStats)}
+        <!-- VS -->
+        <div class="battle-vs">
+          <span>VS</span>
+        </div>
+        
+        <!-- Foto B -->
+        <div class="battle-photo" id="battlePhotoB" tabindex="0" role="button" aria-label="Escolher Foto B (2 ou →)">
+          <img src="${photoB.thumb}" alt="Foto B">
+          <div class="battle-label">2</div>
+          <div class="battle-info">
+            <div class="battle-rank">#${statsB.rank} | ${statsB.wins}W-${statsB.losses}L</div>
           </div>
+        </div>
+      </div>
+      
+      <!-- Ranking dinâmico - discreto no lado direito -->
+      <div class="dynamic-ranking-sidebar">
+        <h4>Ranking</h4>
+        <div class="ranking-list">
+          ${renderDynamicRanking(qualifiedPhotos, photoStats)}
         </div>
       </div>
       
@@ -2712,7 +2711,7 @@ async function renderQualifyingBattle() {
   document.addEventListener('keydown', battleKeysHandler);
   
   // Event listeners para cliques - usar event delegation para evitar problemas
-  const battleContainer = $('.battle-container');
+  const battleContainer = $('.battle-container-full');
   if (battleContainer) {
     // Remover listeners antigos
     const newContainer = battleContainer.cloneNode(true);
@@ -2812,38 +2811,37 @@ async function renderFinalBattle() {
         </span>
       </div>
       
-      <div class="battle-with-ranking">
-        <div class="battle-container">
-          <!-- Foto A -->
-          <div class="battle-photo" id="battlePhotoA" tabindex="0" role="button" aria-label="Escolher Foto A (1 ou ←)">
-            <img src="${photoA.thumb}" alt="Foto A">
-            <div class="battle-label">1</div>
-            <div class="battle-info">
-              <div class="battle-rank">#${statsA.rank} | ${statsA.wins}W-${statsA.losses}L</div>
-            </div>
-          </div>
-          
-          <!-- VS -->
-          <div class="battle-vs">
-            <span>VS</span>
-          </div>
-          
-          <!-- Foto B -->
-          <div class="battle-photo" id="battlePhotoB" tabindex="0" role="button" aria-label="Escolher Foto B (2 ou →)">
-            <img src="${photoB.thumb}" alt="Foto B">
-            <div class="battle-label">2</div>
-            <div class="battle-info">
-              <div class="battle-rank">#${statsB.rank} | ${statsB.wins}W-${statsB.losses}L</div>
-            </div>
+      <!-- Container principal das imagens - ocupa toda largura -->
+      <div class="battle-container-full">
+        <!-- Foto A -->
+        <div class="battle-photo" id="battlePhotoA" tabindex="0" role="button" aria-label="Escolher Foto A (1 ou ←)">
+          <img src="${photoA.thumb}" alt="Foto A">
+          <div class="battle-label">1</div>
+          <div class="battle-info">
+            <div class="battle-rank">#${statsA.rank} | ${statsA.wins}W-${statsA.losses}L</div>
           </div>
         </div>
         
-        <!-- Ranking dinâmico -->
-        <div class="dynamic-ranking">
-          <h4>Ranking Final</h4>
-          <div class="ranking-list">
-            ${renderDynamicRanking(finalPhotos, photoStats)}
+        <!-- VS -->
+        <div class="battle-vs">
+          <span>VS</span>
+        </div>
+        
+        <!-- Foto B -->
+        <div class="battle-photo" id="battlePhotoB" tabindex="0" role="button" aria-label="Escolher Foto B (2 ou →)">
+          <img src="${photoB.thumb}" alt="Foto B">
+          <div class="battle-label">2</div>
+          <div class="battle-info">
+            <div class="battle-rank">#${statsB.rank} | ${statsB.wins}W-${statsB.losses}L</div>
           </div>
+        </div>
+      </div>
+      
+      <!-- Ranking dinâmico - discreto no lado direito -->
+      <div class="dynamic-ranking-sidebar">
+        <h4>Ranking Final</h4>
+        <div class="ranking-list">
+          ${renderDynamicRanking(finalPhotos, photoStats)}
         </div>
       </div>
       
@@ -2870,7 +2868,7 @@ async function renderFinalBattle() {
   document.addEventListener('keydown', battleKeysHandler);
   
   // Event listeners para cliques - usar event delegation
-  const battleContainer = $('.battle-container');
+  const battleContainer = $('.battle-container-full');
   if (battleContainer) {
     const newContainer = battleContainer.cloneNode(true);
     battleContainer.replaceWith(newContainer);
