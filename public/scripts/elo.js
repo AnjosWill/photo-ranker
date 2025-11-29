@@ -197,3 +197,191 @@ export function generateRanking(photos, eloScores, battleHistory = []) {
   return ranking;
 }
 
+/**
+ * Gera estrutura de bracket de eliminação progressiva com consolation bracket
+ * Sistema: Double Elimination Tournament
+ * 
+ * Round 1: Pares iniciais (A vs B, C vs D, etc.)
+ * Round 2+: Winners avançam, Losers batalham entre si para ranking
+ * 
+ * @param {Array} photos - Fotos participantes
+ * @returns {Object} Estrutura do bracket
+ */
+export function generateBracketStructure(photos) {
+  if (photos.length < 2) {
+    return null;
+  }
+  
+  // Embaralhar fotos (ou ordenar por Elo inicial se preferir)
+  const shuffled = [...photos].sort(() => Math.random() - 0.5);
+  
+  // Criar Round 1 (inicial)
+  const round1Matches = [];
+  for (let i = 0; i < shuffled.length; i += 2) {
+    if (i + 1 < shuffled.length) {
+      round1Matches.push({
+        photoA: shuffled[i],
+        photoB: shuffled[i + 1],
+        winner: null,
+        loser: null,
+        completed: false
+      });
+    } else {
+      // Foto ímpar - bye (avança direto)
+      round1Matches.push({
+        photoA: shuffled[i],
+        photoB: null,
+        winner: shuffled[i],
+        loser: null,
+        completed: true,
+        bye: true
+      });
+    }
+  }
+  
+  return {
+    rounds: [
+      {
+        round: 1,
+        type: 'initial',
+        matches: round1Matches,
+        winners: [],
+        losers: [],
+        completed: false
+      }
+    ],
+    currentRound: 1,
+    currentMatchIndex: 0,
+    totalRounds: Math.ceil(Math.log2(photos.length)) + 1
+  };
+}
+
+/**
+ * Processa resultado de uma batalha e atualiza o bracket
+ * @param {Object} bracket - Estrutura do bracket
+ * @param {number} roundIndex - Índice do round (0-based)
+ * @param {number} matchIndex - Índice do match no round
+ * @param {Object} winner - Foto vencedora
+ * @param {Object} loser - Foto perdedora
+ * @returns {Object} Bracket atualizado
+ */
+export function processBracketBattle(bracket, roundIndex, matchIndex, winner, loser) {
+  if (!bracket || !bracket.rounds[roundIndex]) {
+    return bracket;
+  }
+  
+  const round = bracket.rounds[roundIndex];
+  const match = round.matches[matchIndex];
+  
+  if (!match || match.completed) {
+    return bracket;
+  }
+  
+  // Atualizar match
+  match.winner = winner;
+  match.loser = loser;
+  match.completed = true;
+  
+  // Adicionar aos arrays de winners/losers
+  if (!round.winners.includes(winner.id)) {
+    round.winners.push(winner.id);
+  }
+  if (!round.losers.includes(loser.id)) {
+    round.losers.push(loser.id);
+  }
+  
+  // Verificar se round está completo
+  const allCompleted = round.matches.every(m => m.completed);
+  if (allCompleted) {
+    round.completed = true;
+    
+    // Gerar próximo round se necessário
+    generateNextRound(bracket, roundIndex);
+  }
+  
+  return bracket;
+}
+
+/**
+ * Gera próximo round baseado nos resultados do round anterior
+ * @param {Object} bracket - Estrutura do bracket
+ * @param {number} completedRoundIndex - Índice do round completado
+ */
+function generateNextRound(bracket, completedRoundIndex) {
+  const completedRound = bracket.rounds[completedRoundIndex];
+  
+  if (!completedRound || !completedRound.completed) {
+    return;
+  }
+  
+  // Se é round inicial, criar Round 2 - Winners e Round 2 - Losers
+  if (completedRound.type === 'initial') {
+    // Winners Round 2
+    if (completedRound.winners.length >= 2) {
+      const winnersMatches = [];
+      const winnerPhotos = completedRound.matches
+        .filter(m => m.winner && !m.bye)
+        .map(m => m.winner);
+      
+      for (let i = 0; i < winnerPhotos.length; i += 2) {
+        if (i + 1 < winnerPhotos.length) {
+          winnersMatches.push({
+            photoA: winnerPhotos[i],
+            photoB: winnerPhotos[i + 1],
+            winner: null,
+            loser: null,
+            completed: false
+          });
+        }
+      }
+      
+      if (winnersMatches.length > 0) {
+        bracket.rounds.push({
+          round: 2,
+          type: 'winners',
+          matches: winnersMatches,
+          winners: [],
+          losers: [],
+          completed: false
+        });
+      }
+    }
+    
+    // Losers Round 2 (Consolation)
+    if (completedRound.losers.length >= 2) {
+      const losersMatches = [];
+      const loserPhotos = completedRound.matches
+        .filter(m => m.loser)
+        .map(m => m.loser);
+      
+      for (let i = 0; i < loserPhotos.length; i += 2) {
+        if (i + 1 < loserPhotos.length) {
+          losersMatches.push({
+            photoA: loserPhotos[i],
+            photoB: loserPhotos[i + 1],
+            winner: null,
+            loser: null,
+            completed: false
+          });
+        }
+      }
+      
+      if (losersMatches.length > 0) {
+        bracket.rounds.push({
+          round: 2,
+          type: 'losers',
+          matches: losersMatches,
+          winners: [],
+          losers: [],
+          completed: false
+        });
+      }
+    }
+  } else {
+    // Rounds subsequentes: continuar gerando winners e losers
+    // TODO: Implementar lógica para rounds 3+
+  }
+  
+  bracket.currentRound = bracket.rounds.length;
+}
+
