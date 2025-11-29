@@ -42,7 +42,7 @@ let rateViewOnlyUnrated = false; // Filtro "apenas não avaliadas"
 // Sprint 4: Estado do Contest (Sistema Completo: Classificatória + Bracket)
 let contestState = null; 
 // {
-//   phase: 'qualifying' | 'bracket' | 'finished',
+//   phase: 'qualifying' | 'final' | 'finished',
 //   qualifiedPhotos: Photo[],
 //   
 //   // Fase Classificatória
@@ -1791,7 +1791,7 @@ async function renderContestView() {
   console.log('[DEBUG] contestState após load:', contestState ? contestState.phase : 'null');
   
   // Verificar se há contest ativo
-  if (contestState && (contestState.phase === 'qualifying' || contestState.phase === 'bracket')) {
+  if (contestState && (contestState.phase === 'qualifying' || contestState.phase === 'final')) {
     console.log('[DEBUG] Contest ativo encontrado, renderizando batalha');
     await renderBattle();
     return;
@@ -2831,13 +2831,12 @@ function toggleOverlay(overlayId) {
  * Renderiza overlay de ranking completo
  */
 function renderRankingOverlay() {
-  if (!contestState || contestState.phase !== 'qualifying') return '';
+  if (!contestState || (contestState.phase !== 'qualifying' && contestState.phase !== 'final')) return '';
   
-  const { qualifiedPhotos, eloScores, battleHistory, scoresAndTiers } = contestState;
-  const photoStats = calculatePhotoStats(qualifiedPhotos, eloScores, battleHistory, contestState.photoStats);
+  const photoStats = calculatePhotoStats(photos, eloScores, battleHistory, contestState.photoStats);
   // Atualizar cache
   contestState.photoStats = photoStats;
-  const ranked = [...qualifiedPhotos]
+  const ranked = [...photos]
     .map(p => ({ 
       ...p, 
       stats: photoStats[p.id],
@@ -3448,8 +3447,8 @@ function handleBattleKeys(e) {
     return;
   }
   
-  // Verificar se está em fase de batalha (qualifying ou bracket)
-  if (contestState.phase !== 'qualifying' && contestState.phase !== 'bracket') {
+  // Verificar se está em fase de batalha (qualifying ou final)
+  if (contestState.phase !== 'qualifying' && contestState.phase !== 'final') {
     return;
   }
   
@@ -3504,9 +3503,9 @@ async function chooseBattleWinner(winner) {
   if (contestState.phase === 'qualifying') {
     console.log('[DEBUG] Processando batalha da fase classificatória (voto manual)');
     await handleQualifyingBattle(winner);
-  } else if (contestState.phase === 'bracket') {
-    console.log('[DEBUG] Processando batalha da fase bracket (voto manual)');
-    await handleBracketBattle(winner);
+  } else if (contestState.phase === 'final') {
+    console.log('[DEBUG] Processando batalha da fase final (voto manual)');
+    await handleFinalBattle(winner);
   } else {
     console.error('[DEBUG] Fase desconhecida:', contestState.phase);
   }
@@ -3703,12 +3702,13 @@ async function handleQualifyingBattle(winner) {
 }
 
 /**
- * Finaliza fase classificatória e inicia bracket
+ * Finaliza fase classificatória e inicia fase final
+ * Filtra fotos com score > 50 e faz todas contra todas
  */
 async function finishQualifyingAndStartBracket() {
   const { qualifiedPhotos, eloScores, scoresAndTiers } = contestState;
   
-  // CONGELAR Elo e scores
+  // CONGELAR Elo e scores da classificatória
   contestState.frozen = true;
   
   // Calcular ranking final baseado em score (não Elo)
@@ -3731,24 +3731,52 @@ async function finishQualifyingAndStartBracket() {
       return a.id.localeCompare(b.id);
     });
   
-  // Determinar seeds do bracket (top K, potência de 2)
-  const bracketSize = Math.min(16, Math.pow(2, Math.floor(Math.log2(ranked.length))));
-  const seeds = ranked.slice(0, bracketSize);
+  // FILTRAR: apenas fotos com score > 50
+  const finalPhotos = ranked.filter(p => p.scoreData.score > 50);
   
-  // Gerar bracket de eliminatória
-  const bracket = generateBracketFromSeeds(seeds);
+  if (finalPhotos.length < 2) {
+    // Se não há fotos suficientes, finalizar contest
+    contestState.phase = 'finished';
+    saveContestState();
+    toast(`🏆 Contest finalizado! Apenas ${finalPhotos.length} foto(s) com score > 50.`);
+    await new Promise(resolve => setTimeout(resolve, 1500));
+    location.hash = '#/results';
+    return;
+  }
   
-  contestState.phase = 'bracket';
-  contestState.bracket = {
-    seeds: seeds,
-    rounds: bracket.rounds,
-    currentRound: 1,
-    currentMatchIndex: 0
+  // Gerar batalhas "todas contra todas" para a fase final
+  const finalMatches = generateQualifyingBattles(
+    finalPhotos,
+    finalPhotos.length - 1, // Cada foto batalha contra todas as outras
+    eloScores,
+    contestState.battleHistory.filter(b => b.phase === 'qualifying') // Apenas batalhas da classificatória
+  );
+  
+  // Inicializar histórico de Elo para fase final (continuar do Elo atual)
+  const finalEloHistory = {};
+  finalPhotos.forEach(p => {
+    const existingHistory = contestState.qualifying?.eloHistory?.[p.id] || [];
+    finalEloHistory[p.id] = existingHistory.length > 0 
+      ? existingHistory 
+      : [{ elo: eloScores[p.id] || 1500, timestamp: Date.now(), battleId: null }];
+  });
+  
+  contestState.phase = 'final';
+  contestState.final = {
+    finalPhotos: finalPhotos,
+    totalBattles: finalMatches.length,
+    completedBattles: 0,
+    currentMatch: finalMatches[0] || null,
+    pendingMatches: finalMatches.slice(1),
+    eloHistory: finalEloHistory
   };
+  
+  // Limpar bracket (não usado mais)
+  contestState.bracket = null;
   
   saveContestState();
   
-  toast(`🏆 Fase Classificatória finalizada! Elo e scores congelados. Top ${bracketSize} avançam para o Bracket Final.`);
+  toast(`🏆 Fase Classificatória finalizada! ${finalPhotos.length} fotos com score > 50 avançam para a Fase Final (todas contra todas).`);
   await new Promise(resolve => setTimeout(resolve, 1500));
   
   await renderBattle();
@@ -3787,32 +3815,42 @@ function generateBracketFromSeeds(seeds) {
 }
 
 /**
- * Processa batalha da fase bracket
+ * Processa batalha da fase final
  */
-async function handleBracketBattle(winner) {
-  const { bracket, eloScores } = contestState;
-  const currentRound = bracket.rounds[bracket.currentRound - 1];
-  const currentMatch = currentRound.matches[bracket.currentMatchIndex];
+async function handleFinalBattle(winner) {
+  const { final, eloScores } = contestState;
+  const currentMatch = final.currentMatch;
   
   if (!currentMatch) return;
   
   const winnerPhoto = winner === 'A' ? currentMatch.photoA : currentMatch.photoB;
-  const winnerId = winnerPhoto.id;
-  
-  // Atualizar match
-  currentMatch.winner = winnerId;
-  currentMatch.votesA = winner === 'A' ? 1 : 0;
-  currentMatch.votesB = winner === 'B' ? 1 : 0;
-  
-  // Atualizar Elo (opcional no bracket)
   const loserPhoto = winner === 'A' ? currentMatch.photoB : currentMatch.photoA;
+  const winnerId = winnerPhoto.id;
   const loserId = loserPhoto.id;
+  
+  // Atualizar Elo (continuar atualizando na fase final)
   const result = calculateElo(
     eloScores[winnerId] || 1500,
     eloScores[loserId] || 1500,
     32
   );
   contestState.eloScores = updateEloScores(winnerId, loserId, contestState.eloScores, 32);
+  
+  // Atualizar histórico de Elo
+  if (final.eloHistory[winnerId]) {
+    final.eloHistory[winnerId].push({
+      elo: eloScores[winnerId],
+      timestamp: Date.now(),
+      battleId: `${winnerId}-${loserId}`
+    });
+  }
+  if (final.eloHistory[loserId]) {
+    final.eloHistory[loserId].push({
+      elo: eloScores[loserId],
+      timestamp: Date.now(),
+      battleId: `${winnerId}-${loserId}`
+    });
+  }
   
   // Salvar no histórico
   contestState.battleHistory.push({
@@ -3821,40 +3859,94 @@ async function handleBracketBattle(winner) {
     winner: winnerId,
     timestamp: Date.now(),
     eloChange: result.change,
-    phase: 'bracket',
-    votesA: currentMatch.votesA,
-    votesB: currentMatch.votesB
+    phase: 'final',
+    votesA: winner === 'A' ? 1 : 0,
+    votesB: winner === 'B' ? 1 : 0
   });
   
-  toast(`Foto ${winner} venceu! Avança para próxima rodada.`);
+  toast(`Foto ${winner} venceu!`);
   
-  // Avançar para próximo match
-  bracket.currentMatchIndex++;
+  // Avançar para próxima batalha
+  final.completedBattles++;
   
-  // Verificar se rodada terminou
-  if (bracket.currentMatchIndex >= currentRound.matches.length) {
-    // Avançar para próxima rodada
-    bracket.currentRound++;
-    bracket.currentMatchIndex = 0;
-    
-    if (bracket.currentRound > bracket.rounds.length) {
-      // Bracket finalizado!
-      contestState.phase = 'finished';
-      saveContestState();
-      
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      toast(`🏆 Contest finalizado! Campeão definido!`);
-      
-      setTimeout(() => {
-        location.hash = '#/results';
-      }, 1500);
-      return;
-    }
+  // Verificar se fase final terminou
+  if (final.completedBattles >= final.totalBattles || final.pendingMatches.length === 0) {
+    console.log('[DEBUG] Fase final terminada - finalizando contest');
+    await finishFinalPhase();
+    return;
+  }
+  
+  // Filtrar matches que já foram batalhadas
+  const remainingMatches = final.pendingMatches.filter(match => {
+    const pairKey = [match.photoA.id, match.photoB.id].sort().join('-');
+    return !contestState.battleHistory.some(b => {
+      if (b.phase !== 'final') return false;
+      const battleKey = [b.photoA, b.photoB].sort().join('-');
+      return battleKey === pairKey;
+    });
+  });
+  
+  final.pendingMatches = remainingMatches;
+  final.currentMatch = remainingMatches.shift() || null;
+  
+  // Se não há mais batalhas válidas, finalizar
+  if (!final.currentMatch && remainingMatches.length === 0) {
+    console.log('[DEBUG] Não há mais batalhas válidas - finalizando fase final');
+    await finishFinalPhase();
+    return;
   }
   
   saveContestState();
   await new Promise(resolve => setTimeout(resolve, 800));
   await renderBattle();
+}
+
+/**
+ * Finaliza fase final e define campeã
+ */
+async function finishFinalPhase() {
+  const { final, eloScores, battleHistory } = contestState;
+  
+  // Calcular ranking final baseado em Elo (ou score se preferir)
+  const photoStats = calculatePhotoStats(
+    final.finalPhotos,
+    eloScores,
+    battleHistory.filter(b => b.phase === 'final'),
+    {}
+  );
+  
+  // Ordenar por Elo (maior → menor)
+  const ranked = [...final.finalPhotos]
+    .map(p => ({
+      ...p,
+      stats: photoStats[p.id]
+    }))
+    .sort((a, b) => {
+      const eloA = eloScores[a.id] || 1500;
+      const eloB = eloScores[b.id] || 1500;
+      if (eloB !== eloA) {
+        return eloB - eloA;
+      }
+      // Desempate: mais vitórias
+      if (b.stats.wins !== a.stats.wins) {
+        return b.stats.wins - a.stats.wins;
+      }
+      return a.id.localeCompare(b.id);
+    });
+  
+  // Campeã é a primeira do ranking
+  const championId = ranked[0].id;
+  
+  contestState.phase = 'finished';
+  contestState.championId = championId;
+  saveContestState();
+  
+  await new Promise(resolve => setTimeout(resolve, 1000));
+  toast(`🏆 Contest finalizado! Campeã definida!`);
+  
+  setTimeout(() => {
+    location.hash = '#/results';
+  }, 1500);
 }
 
 
@@ -3918,21 +4010,20 @@ function saveContestState() {
         eloHistory: contestState.qualifying.eloHistory
       } : null,
       
-      // Fase Bracket
-      bracket: contestState.bracket ? {
-        seedIds: contestState.bracket.seeds.map(p => p.id),
-        rounds: contestState.bracket.rounds.map(r => ({
-          round: r.round,
-          matches: r.matches.map(m => ({
-            photoA: m.photoA.id,
-            photoB: m.photoB.id,
-            winner: m.winner,
-            votesA: m.votesA,
-            votesB: m.votesB
-          }))
+      // Fase Final
+      final: contestState.final ? {
+        finalPhotoIds: contestState.final.finalPhotos.map(p => p.id),
+        totalBattles: contestState.final.totalBattles,
+        completedBattles: contestState.final.completedBattles,
+        currentMatch: contestState.final.currentMatch ? {
+          photoA: contestState.final.currentMatch.photoA.id,
+          photoB: contestState.final.currentMatch.photoB.id
+        } : null,
+        pendingMatches: contestState.final.pendingMatches.map(m => ({
+          photoA: m.photoA.id,
+          photoB: m.photoB.id
         })),
-        currentRound: contestState.bracket.currentRound,
-        currentMatchIndex: contestState.bracket.currentMatchIndex
+        eloHistory: contestState.final.eloHistory
       } : null,
       
       eloScores: contestState.eloScores,
@@ -3940,7 +4031,8 @@ function saveContestState() {
       photoStats: contestState.photoStats || {},
       frozen: contestState.frozen || false,
       eloRange: contestState.eloRange || { min: 1500, max: 1500 },
-      scoresAndTiers: contestState.scoresAndTiers || {}
+      scoresAndTiers: contestState.scoresAndTiers || {},
+      championId: contestState.championId || null
     };
     
     localStorage.setItem('photoranker-contest-state', JSON.stringify(stateToSave));
@@ -4013,29 +4105,30 @@ function loadContestState() {
       });
     }
     
-    // Reconstruir fase bracket
-    let bracket = null;
-    if (state.bracket) {
-      const seeds = state.bracket.seedIds
+    // Reconstruir fase final
+    let final = null;
+    if (state.final) {
+      const finalPhotos = state.final.finalPhotoIds
         .map(id => allPhotos.find(p => p.id === id))
         .filter(Boolean);
       
-      const rounds = state.bracket.rounds.map(r => ({
-        round: r.round,
-        matches: r.matches.map(m => ({
-          photoA: allPhotos.find(p => p.id === m.photoA),
-          photoB: allPhotos.find(p => p.id === m.photoB),
-          winner: m.winner,
-          votesA: m.votesA,
-          votesB: m.votesB
-        })).filter(m => m.photoA && m.photoB)
-      }));
+      const currentMatch = state.final.currentMatch ? {
+        photoA: allPhotos.find(p => p.id === state.final.currentMatch.photoA),
+        photoB: allPhotos.find(p => p.id === state.final.currentMatch.photoB)
+      } : null;
       
-      bracket = {
-        seeds: seeds,
-        rounds: rounds,
-        currentRound: state.bracket.currentRound,
-        currentMatchIndex: state.bracket.currentMatchIndex
+      const pendingMatches = state.final.pendingMatches.map(m => ({
+        photoA: allPhotos.find(p => p.id === m.photoA),
+        photoB: allPhotos.find(p => p.id === m.photoB)
+      })).filter(m => m.photoA && m.photoB);
+      
+      final = {
+        finalPhotos: finalPhotos,
+        totalBattles: state.final.totalBattles,
+        completedBattles: state.final.completedBattles,
+        currentMatch: currentMatch,
+        pendingMatches: pendingMatches,
+        eloHistory: state.final.eloHistory || {}
       };
     }
     
@@ -4043,13 +4136,15 @@ function loadContestState() {
       phase: state.phase,
       qualifiedPhotos: qualifiedPhotos,
       qualifying: qualifying,
-      bracket: bracket,
+      final: final,
+      bracket: null, // Não usado mais, mas manter para compatibilidade
       eloScores: state.eloScores || {},
       battleHistory: state.battleHistory || [],
       photoStats: state.photoStats || {},
       frozen: state.frozen || false,
       eloRange: state.eloRange || { min: 1500, max: 1500 },
-      scoresAndTiers: state.scoresAndTiers || {}
+      scoresAndTiers: state.scoresAndTiers || {},
+      championId: state.championId || null
     };
     
     // Se não há scoresAndTiers salvos, calcular agora
@@ -4066,7 +4161,8 @@ function loadContestState() {
       phase: contestState.phase,
       qualifiedPhotos: contestState.qualifiedPhotos.length,
       hasQualifying: !!contestState.qualifying,
-      hasBracket: !!contestState.bracket
+      hasFinal: !!contestState.final,
+      championId: contestState.championId
     });
     
   } catch (err) {
