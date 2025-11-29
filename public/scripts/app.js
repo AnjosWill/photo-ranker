@@ -5060,40 +5060,6 @@ async function renderResultsView() {
     heatmapContainer.innerHTML = renderHeatmap();
   }
   
-  // Renderizar gráficos de evolução (Top 5)
-  const chartsContainer = $('#resultsCharts');
-  if (chartsContainer) {
-    const top5 = ranking.slice(0, 5);
-    top5.forEach((photo, idx) => {
-      const photoBattles = contestState.battleHistory.filter(b => 
-        b.photoA === photo.id || b.photoB === photo.id
-      );
-      const eloHistory = contestState.qualifying?.eloHistory?.[photo.id] || [];
-      
-      // Converter para scoreHistory
-      const scoreHistory = eloHistory.map(h => ({
-        score: normalizeEloToScore(h.elo, contestState.eloRange.min, contestState.eloRange.max),
-        timestamp: h.timestamp,
-        battleId: h.battleId
-      }));
-      
-      const chartDiv = document.createElement('div');
-      chartDiv.className = 'chart-item';
-      chartDiv.innerHTML = `
-        <div class="chart-header">
-          <img src="${photo.thumb}" alt="Foto ${idx + 1}" class="chart-thumb">
-          <div class="chart-title">#${idx + 1} - Score: ${photo.scoreData.score}/100 ${photo.scoreData.tier.icon}</div>
-        </div>
-        <canvas id="chart-${photo.id}" width="600" height="150"></canvas>
-      `;
-      chartsContainer.appendChild(chartDiv);
-      
-      setTimeout(() => {
-        renderScoreChart(`chart-${photo.id}`, scoreHistory);
-      }, 100);
-    });
-  }
-  
   // Renderizar estatísticas gerais
   const statsContainer = $('#resultsStats');
   if (statsContainer) {
