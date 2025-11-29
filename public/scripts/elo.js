@@ -49,56 +49,46 @@ export function initializeEloScores(photos, initialRating = 1500) {
 }
 
 /**
- * Gera sistema de eliminatória completo (bracket/chaves)
- * Todos os participantes batalham até sobrar apenas 1 campeão
+ * Gera confrontos "todos contra todos" (round-robin) para uma rodada
+ * Cada foto batalha com todas as outras, sem repetição
  * 
- * @param {Array} photos - Fotos qualificadas
- * @param {Object} eloScores - Scores atuais { photoId: rating }
- * @returns {Object} { rounds: [[{photoA, photoB}, ...], ...], totalMatches: number }
+ * @param {Array} photos - Fotos participantes da rodada
+ * @param {Array} battleHistory - Histórico de batalhas (para evitar repetições)
+ * @param {number} round - Número da rodada
+ * @returns {Array} [{photoA, photoB}, ...] Array de confrontos
  */
-export function generateEliminationBracket(photos, eloScores = {}) {
+export function generateRoundRobin(photos, battleHistory = [], round = 1) {
   if (photos.length < 2) {
-    return { rounds: [], totalMatches: 0 };
+    return [];
   }
   
-  // Ordenar por Elo (seed do torneio)
-  const seeded = [...photos].sort((a, b) => 
-    (eloScores[b.id] || 1500) - (eloScores[a.id] || 1500)
-  );
+  const pairings = [];
+  const used = new Set();
   
-  const rounds = [];
-  let currentRound = seeded;
-  
-  // Gerar rodadas até sobrar apenas 1 foto
-  while (currentRound.length > 1) {
-    const roundPairings = [];
-    
-    // Parear: 1º vs último, 2º vs penúltimo, etc (balanceado)
-    const half = Math.ceil(currentRound.length / 2);
-    
-    for (let i = 0; i < half; i++) {
-      const photoA = currentRound[i];
-      const photoB = currentRound[currentRound.length - 1 - i];
+  // Gerar todos os pares possíveis (sem repetição)
+  for (let i = 0; i < photos.length; i++) {
+    for (let j = i + 1; j < photos.length; j++) {
+      const photoA = photos[i];
+      const photoB = photos[j];
       
-      // Se não houver par (número ímpar), photoA passa automaticamente (bye)
-      if (photoA && photoB && photoA.id !== photoB.id) {
-        roundPairings.push({ photoA, photoB });
+      // Verificar se já batalharam antes (em qualquer rodada)
+      const pairKey = [photoA.id, photoB.id].sort().join('-');
+      const alreadyFaced = battleHistory.some(b => {
+        const battleKey = [b.photoA, b.photoB].sort().join('-');
+        return battleKey === pairKey;
+      });
+      
+      // Se já batalharam, usar vencedora anterior (não criar novo confronto)
+      if (alreadyFaced) {
+        continue; // Pula este par (já foi decidido antes)
       }
+      
+      // Adicionar confronto
+      pairings.push({ photoA, photoB });
     }
-    
-    if (roundPairings.length > 0) {
-      rounds.push(roundPairings);
-    }
-    
-    // Próxima rodada terá metade dos participantes (vencedores)
-    // Como ainda não sabemos os vencedores, preparamos para a quantidade esperada
-    currentRound = currentRound.slice(0, half);
   }
   
-  // Calcular total de confrontos
-  const totalMatches = rounds.reduce((sum, round) => sum + round.length, 0);
-  
-  return { rounds, totalMatches };
+  return pairings;
 }
 
 /**

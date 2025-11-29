@@ -1433,6 +1433,14 @@ body.selection-mode .split-btn {
   border-left-color: rgba(61, 220, 151, 0.5);
 }
 
+.bracket-empty {
+  padding: var(--gap-3);
+  text-align: center;
+  color: var(--muted);
+  font-size: 14px;
+  font-style: italic;
+}
+
 /* Mobile: layout vertical */
 @media (max-width: 600px) {
   .battle-container {

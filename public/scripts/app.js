@@ -15,7 +15,7 @@ import { createStarRating, updateStarRating } from "./rating.js";
 import { 
   calculateElo, 
   initializeEloScores, 
-  generateEliminationBracket,
+  generateRoundRobin,
   updateEloScores,
   getChampion,
   generateRanking
@@ -1809,23 +1809,15 @@ async function startContest() {
   // Inicializar scores Elo
   const eloScores = initializeEloScores(qualifiedPhotos);
   
-  // Gerar bracket de eliminatória completo
-  const bracket = generateEliminationBracket(qualifiedPhotos, eloScores);
+  // Gerar confrontos da Rodada 1 (todos contra todos)
+  const round1Matches = generateRoundRobin(qualifiedPhotos, [], 1);
   
-  // Converter rounds em lista flat de confrontos com metadados
-  const allMatches = [];
-  bracket.rounds.forEach((roundPairs, roundIndex) => {
-    roundPairs.forEach(pair => {
-      allMatches.push({
-        photoA: pair.photoA,
-        photoB: pair.photoB,
-        round: roundIndex + 1
-      });
-    });
-  });
-  
-  // Calcular total de rodadas
-  const totalRounds = bracket.rounds.length;
+  // Converter para formato de allMatches
+  const allMatches = round1Matches.map(pair => ({
+    photoA: pair.photoA,
+    photoB: pair.photoB,
+    round: 1
+  }));
   
   contestState = {
     phase: 'battle',
@@ -1833,7 +1825,7 @@ async function startContest() {
     allMatches: allMatches,
     currentMatchIndex: 0,
     currentRound: 1,
-    totalRounds: totalRounds,
+    totalRounds: 0, // Será calculado dinamicamente
     roundParticipants: [...qualifiedPhotos], // Rodada 1 = todos
     eloScores: eloScores,
     battleHistory: []
@@ -1842,7 +1834,7 @@ async function startContest() {
   saveContestState();
   renderBattle();
   
-  toast(`Contest iniciado! ${qualifiedPhotos.length} participantes, ${totalRounds} rodada${totalRounds > 1 ? 's' : ''}, ${allMatches.length} confrontos.`);
+  toast(`Contest iniciado! ${qualifiedPhotos.length} participantes, Rodada 1 com ${allMatches.length} confrontos (todos contra todos).`);
 }
 
 /**
@@ -1868,12 +1860,13 @@ function getPreviousWinner(photoAId, photoBId, battleHistory) {
 
 /**
  * Renderiza bracket visual em diagrama (chaves do torneio com linhas)
+ * Mostra apenas fotos que realmente batalharam/existem
  * @returns {string} HTML do bracket
  */
 function renderBracket() {
   if (!contestState) return '';
   
-  const { qualifiedPhotos, allMatches, currentMatchIndex, currentRound, battleHistory, eloScores } = contestState;
+  const { allMatches, currentMatchIndex, currentRound, battleHistory, eloScores, roundParticipants } = contestState;
   
   // Organizar confrontos por rodada
   const rounds = {};
@@ -1885,66 +1878,76 @@ function renderBracket() {
   // Identificar confronto atual
   const currentMatch = allMatches[currentMatchIndex];
   
-  // Calcular número máximo de rodadas
-  const maxRounds = Math.max(...Object.keys(rounds).map(Number));
+  // Calcular número máximo de rodadas (apenas rodadas que existem)
+  const existingRounds = Object.keys(rounds).map(Number).sort((a, b) => a - b);
+  const maxRounds = existingRounds.length > 0 ? Math.max(...existingRounds) : currentRound;
   
   let html = '<div class="bracket-diagram">';
   
-  // Renderizar cada rodada (da esquerda para direita)
+  // Renderizar apenas rodadas que existem (não mostrar rodadas futuras vazias)
   for (let roundNum = 1; roundNum <= maxRounds; roundNum++) {
     const matches = rounds[roundNum] || [];
     const isCurrentRound = roundNum === currentRound;
+    
+    // Se não há confrontos nesta rodada e não é a rodada atual, pular
+    if (matches.length === 0 && roundNum > currentRound) {
+      continue;
+    }
     
     html += `<div class="bracket-column ${isCurrentRound ? 'active' : ''}" data-round="${roundNum}">`;
     html += `<div class="bracket-column-label">Rodada ${roundNum}</div>`;
     html += `<div class="bracket-column-content">`;
     
-    matches.forEach((match, matchIdx) => {
-      const photoA = match.photoA;
-      const photoB = match.photoB;
-      const isCurrentMatch = currentMatch && 
-        ((match.photoA.id === currentMatch.photoA.id && match.photoB.id === currentMatch.photoB.id) ||
-         (match.photoA.id === currentMatch.photoB.id && match.photoB.id === currentMatch.photoA.id));
-      
-      // Verificar se já foi decidido
-      const battle = battleHistory.find(b => 
-        ((b.photoA === photoA.id && b.photoB === photoB.id) ||
-         (b.photoA === photoB.id && b.photoB === photoA.id)) &&
-        b.round === roundNum
-      );
-      
-      const winnerId = battle ? battle.winner : null;
-      const photoAWon = winnerId === photoA.id;
-      const photoBWon = winnerId === photoB.id;
-      
-      html += `<div class="bracket-match ${isCurrentMatch ? 'current' : ''} ${battle ? 'decided' : ''}">`;
-      
-      // Slot Foto A
-      html += `<div class="bracket-slot ${photoAWon ? 'winner' : ''} ${photoBWon ? 'loser' : ''}">`;
-      html += `<img src="${photoA.thumb}" alt="Foto A" class="bracket-thumb">`;
-      html += `<div class="bracket-info">`;
-      html += `<div class="bracket-elo">${Math.round(eloScores[photoA.id] || 1500)}</div>`;
-      if (photoAWon) html += '<span class="bracket-check">✓</span>';
-      html += `</div></div>`;
-      
-      // Linha horizontal entre fotos
-      html += `<div class="bracket-line-h"></div>`;
-      
-      // Slot Foto B
-      html += `<div class="bracket-slot ${photoBWon ? 'winner' : ''} ${photoAWon ? 'loser' : ''}">`;
-      html += `<img src="${photoB.thumb}" alt="Foto B" class="bracket-thumb">`;
-      html += `<div class="bracket-info">`;
-      html += `<div class="bracket-elo">${Math.round(eloScores[photoB.id] || 1500)}</div>`;
-      if (photoBWon) html += '<span class="bracket-check">✓</span>';
-      html += `</div></div>`;
-      
-      // Linha conectora para próxima rodada (se não for última)
-      if (roundNum < maxRounds) {
-        html += `<div class="bracket-connector"></div>`;
-      }
-      
-      html += `</div>`;
-    });
+    if (matches.length === 0) {
+      html += `<div class="bracket-empty">Aguardando vencedores da rodada anterior...</div>`;
+    } else {
+      matches.forEach((match, matchIdx) => {
+        const photoA = match.photoA;
+        const photoB = match.photoB;
+        const isCurrentMatch = currentMatch && 
+          ((match.photoA.id === currentMatch.photoA.id && match.photoB.id === currentMatch.photoB.id) ||
+           (match.photoA.id === currentMatch.photoB.id && match.photoB.id === currentMatch.photoA.id));
+        
+        // Verificar se já foi decidido
+        const battle = battleHistory.find(b => 
+          ((b.photoA === photoA.id && b.photoB === photoB.id) ||
+           (b.photoA === photoB.id && b.photoB === photoA.id)) &&
+          b.round === roundNum
+        );
+        
+        const winnerId = battle ? battle.winner : null;
+        const photoAWon = winnerId === photoA.id;
+        const photoBWon = winnerId === photoB.id;
+        
+        html += `<div class="bracket-match ${isCurrentMatch ? 'current' : ''} ${battle ? 'decided' : ''}">`;
+        
+        // Slot Foto A
+        html += `<div class="bracket-slot ${photoAWon ? 'winner' : ''} ${photoBWon ? 'loser' : ''}">`;
+        html += `<img src="${photoA.thumb}" alt="Foto A" class="bracket-thumb">`;
+        html += `<div class="bracket-info">`;
+        html += `<div class="bracket-elo">${Math.round(eloScores[photoA.id] || 1500)}</div>`;
+        if (photoAWon) html += '<span class="bracket-check">✓</span>';
+        html += `</div></div>`;
+        
+        // Linha horizontal entre fotos
+        html += `<div class="bracket-line-h"></div>`;
+        
+        // Slot Foto B
+        html += `<div class="bracket-slot ${photoBWon ? 'winner' : ''} ${photoAWon ? 'loser' : ''}">`;
+        html += `<img src="${photoB.thumb}" alt="Foto B" class="bracket-thumb">`;
+        html += `<div class="bracket-info">`;
+        html += `<div class="bracket-elo">${Math.round(eloScores[photoB.id] || 1500)}</div>`;
+        if (photoBWon) html += '<span class="bracket-check">✓</span>';
+        html += `</div></div>`;
+        
+        // Linha conectora para próxima rodada (se não for última e já foi decidido)
+        if (roundNum < maxRounds && battle) {
+          html += `<div class="bracket-connector"></div>`;
+        }
+        
+        html += `</div>`;
+      });
+    }
     
     html += `</div></div>`;
   }
@@ -2167,17 +2170,26 @@ async function chooseBattleWinner(winner) {
 }
 
 /**
- * Avança para próxima rodada (gera novos confrontos com os vencedores)
+ * Avança para próxima rodada (gera novos confrontos "todos contra todos" com os vencedores)
  */
 async function advanceToNextRound() {
   if (!contestState) return;
   
-  const { currentRound, totalRounds, battleHistory, eloScores } = contestState;
+  const { currentRound, battleHistory, eloScores } = contestState;
   
   // Obter vencedores da rodada atual
+  // Vencedor = foto que venceu pelo menos 1 confronto na rodada
   const currentRoundBattles = battleHistory.filter(h => h.round === currentRound);
-  const winnerIds = currentRoundBattles.map(h => h.winner);
+  const winnerIds = [...new Set(currentRoundBattles.map(h => h.winner))];
+  
+  // Filtrar apenas fotos que realmente existem
   const winners = contestState.qualifiedPhotos.filter(p => winnerIds.includes(p.id));
+  
+  // Se não há vencedores, algo está errado
+  if (winners.length === 0) {
+    console.error('Nenhum vencedor encontrado na rodada', currentRound);
+    return;
+  }
   
   // Se sobrou apenas 1 vencedor, contest finalizado
   if (winners.length === 1) {
@@ -2193,22 +2205,32 @@ async function advanceToNextRound() {
     return;
   }
   
+  // Se não há vencedores suficientes, finalizar
+  if (winners.length < 2) {
+    contestState.phase = 'finished';
+    saveContestState();
+    toast(`🏆 Contest finalizado!`);
+    setTimeout(() => {
+      location.hash = '#/results';
+    }, 1500);
+    return;
+  }
+  
   // Gerar próxima rodada
   toast(`Rodada ${currentRound} completa! ${winners.length} vencedores avançam.`);
   await new Promise(resolve => setTimeout(resolve, 1500));
   
   contestState.currentRound++;
   
-  // Gerar novos confrontos com os vencedores
-  const nextRoundBracket = generateEliminationBracket(winners, eloScores);
+  // Gerar confrontos "todos contra todos" com os vencedores
+  const nextRoundMatches = generateRoundRobin(winners, battleHistory, contestState.currentRound);
   
   // Adicionar confrontos da próxima rodada ao allMatches
-  const nextRound = contestState.currentRound;
-  nextRoundBracket.rounds[0]?.forEach(pair => {
+  nextRoundMatches.forEach(pair => {
     contestState.allMatches.push({
       photoA: pair.photoA,
       photoB: pair.photoB,
-      round: nextRound
+      round: contestState.currentRound
     });
   });
   
@@ -2216,7 +2238,7 @@ async function advanceToNextRound() {
   
   saveContestState();
   
-  toast(`Rodada ${nextRound} iniciada! ${nextRoundBracket.rounds[0]?.length || 0} confrontos.`);
+  toast(`Rodada ${contestState.currentRound} iniciada! ${nextRoundMatches.length} confrontos (todos contra todos).`);
   await new Promise(resolve => setTimeout(resolve, 800));
   
   await renderBattle(); // Aguardar renderBattle (pode ser automático)
