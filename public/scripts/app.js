@@ -1924,8 +1924,67 @@ function getPreviousWinner(photoAId, photoBId, battleHistory) {
 }
 
 /**
- * Renderiza bracket visual mostrando evolução das batalhas
- * Agrupa batalhas por ordem cronológica, mostrando progressão de cada foto
+ * Organiza batalhas em rodadas de eliminatória
+ * Vencedores avançam, perdedores também batalham entre si
+ */
+function organizeBattlesIntoRounds(battleHistory, qualifiedPhotos) {
+  if (battleHistory.length === 0) return { rounds: [], nextRound: [] };
+  
+  // Rodada 1: todas as batalhas iniciais
+  const round1 = battleHistory.filter((b, idx) => {
+    // Primeiras batalhas são da rodada 1
+    // Agrupar por "lote" inicial (primeiras N batalhas)
+    return idx < Math.ceil(qualifiedPhotos.length / 2);
+  });
+  
+  // Identificar vencedores e perdedores da R1
+  const r1Winners = new Set(round1.map(b => b.winner));
+  const r1Losers = new Set();
+  round1.forEach(b => {
+    const loser = b.photoA === b.winner ? b.photoB : b.photoA;
+    r1Losers.add(loser);
+  });
+  
+  // Rodada 2: vencedores vs vencedores, perdedores vs perdedores
+  const round2Winners = [];
+  const round2Losers = [];
+  
+  battleHistory.forEach((b, idx) => {
+    if (idx < round1.length) return; // Já está na R1
+    
+    const photoA = b.photoA;
+    const photoB = b.photoB;
+    const isWinnerBattle = r1Winners.has(photoA) && r1Winners.has(photoB);
+    const isLoserBattle = r1Losers.has(photoA) && r1Losers.has(photoB);
+    
+    if (isWinnerBattle) {
+      round2Winners.push(b);
+    } else if (isLoserBattle) {
+      round2Losers.push(b);
+    } else {
+      // Batalhas mistas ou outras - adicionar à R2 winners por padrão
+      round2Winners.push(b);
+    }
+  });
+  
+  // Organizar em rodadas
+  const rounds = [];
+  if (round1.length > 0) rounds.push({ type: 'winners', battles: round1, label: 'Rodada 1' });
+  if (round2Winners.length > 0) rounds.push({ type: 'winners', battles: round2Winners, label: 'Rodada 2 - Vencedores' });
+  if (round2Losers.length > 0) rounds.push({ type: 'losers', battles: round2Losers, label: 'Rodada 2 - Perdedores' });
+  
+  // Próximas rodadas (se houver mais batalhas)
+  const remainingBattles = battleHistory.slice(round1.length + round2Winners.length + round2Losers.length);
+  if (remainingBattles.length > 0) {
+    rounds.push({ type: 'next', battles: remainingBattles, label: 'Próximas Rodadas' });
+  }
+  
+  return { rounds, nextRound: [] };
+}
+
+/**
+ * Renderiza bracket visual mostrando lógica de eliminatória
+ * Vencedores avançam, perdedores batalham entre si
  * @returns {string} HTML do bracket
  */
 function renderBracket() {
@@ -1936,22 +1995,18 @@ function renderBracket() {
   // Calcular estatísticas
   const photoStats = calculatePhotoStats(qualifiedPhotos, eloScores, battleHistory);
   
-  // Agrupar batalhas em grupos de 10 para visualização
-  const BATTLE_GROUP_SIZE = 10;
-  const battleGroups = [];
-  for (let i = 0; i < battleHistory.length; i += BATTLE_GROUP_SIZE) {
-    battleGroups.push(battleHistory.slice(i, i + BATTLE_GROUP_SIZE));
-  }
+  // Organizar batalhas em rodadas
+  const { rounds } = organizeBattlesIntoRounds(battleHistory, qualifiedPhotos);
   
   let html = '<div class="bracket-diagram">';
   
-  // Renderizar cada grupo de batalhas
-  battleGroups.forEach((group, groupIdx) => {
-    html += `<div class="bracket-column" data-group="${groupIdx}">`;
-    html += `<div class="bracket-column-label">Batalhas ${groupIdx * BATTLE_GROUP_SIZE + 1}-${Math.min((groupIdx + 1) * BATTLE_GROUP_SIZE, battleHistory.length)}</div>`;
+  // Renderizar cada rodada
+  rounds.forEach((round, roundIdx) => {
+    html += `<div class="bracket-column ${roundIdx === 0 ? 'active' : ''}" data-round="${roundIdx}">`;
+    html += `<div class="bracket-column-label">${round.label}</div>`;
     html += `<div class="bracket-column-content">`;
     
-    group.forEach((battle, battleIdx) => {
+    round.battles.forEach((battle, battleIdx) => {
       const photoA = qualifiedPhotos.find(p => p.id === battle.photoA);
       const photoB = qualifiedPhotos.find(p => p.id === battle.photoB);
       
@@ -1968,14 +2023,13 @@ function renderBracket() {
       const statsB = photoStats[photoB.id];
       
       // Container único para cada batalha
-      html += `<div class="bracket-battle-container ${isCurrentBattle ? 'current' : ''} decided" data-battle-id="${battle.photoA}-${battle.photoB}">`;
+      html += `<div class="bracket-battle-container ${isCurrentBattle ? 'current' : ''} decided ${round.type}" data-battle-id="${battle.photoA}-${battle.photoB}">`;
       
       // Slot Foto A
       html += `<div class="bracket-slot ${photoAWon ? 'winner' : 'loser'}">`;
       html += `<img src="${photoA.thumb}" alt="Foto A" class="bracket-thumb">`;
       html += `<div class="bracket-info">`;
       html += `<div class="bracket-elo">${Math.round(eloScores[photoA.id] || 1500)}</div>`;
-      html += `<div class="bracket-stats">${statsA.wins}W-${statsA.losses}L</div>`;
       if (photoAWon) html += '<span class="bracket-check">✓</span>';
       html += `</div></div>`;
       
@@ -1987,13 +2041,14 @@ function renderBracket() {
       html += `<img src="${photoB.thumb}" alt="Foto B" class="bracket-thumb">`;
       html += `<div class="bracket-info">`;
       html += `<div class="bracket-elo">${Math.round(eloScores[photoB.id] || 1500)}</div>`;
-      html += `<div class="bracket-stats">${statsB.wins}W-${statsB.losses}L</div>`;
       if (photoBWon) html += '<span class="bracket-check">✓</span>';
       html += `</div></div>`;
       
-      // Flecha para próximo grupo (se não for último)
-      if (groupIdx < battleGroups.length - 1 && battleIdx === group.length - 1) {
-        html += `<div class="bracket-arrow"></div>`;
+      // Flecha para próxima rodada (se vencedor e não for última rodada)
+      if (photoAWon && roundIdx < rounds.length - 1 && battleIdx === round.battles.length - 1) {
+        html += `<div class="bracket-arrow" data-winner="${photoA.id}"></div>`;
+      } else if (photoBWon && roundIdx < rounds.length - 1 && battleIdx === round.battles.length - 1) {
+        html += `<div class="bracket-arrow" data-winner="${photoB.id}"></div>`;
       }
       
       html += `</div>`; // Fecha bracket-battle-container
@@ -2021,7 +2076,6 @@ function renderBracket() {
     html += `<img src="${photoA.thumb}" alt="Foto A" class="bracket-thumb">`;
     html += `<div class="bracket-info">`;
     html += `<div class="bracket-elo">${Math.round(eloScores[photoA.id] || 1500)}</div>`;
-    html += `<div class="bracket-stats">${statsA.wins}W-${statsA.losses}L</div>`;
     html += `</div></div>`;
     
     html += `<div class="bracket-line-h"></div>`;
@@ -2030,7 +2084,6 @@ function renderBracket() {
     html += `<img src="${photoB.thumb}" alt="Foto B" class="bracket-thumb">`;
     html += `<div class="bracket-info">`;
     html += `<div class="bracket-elo">${Math.round(eloScores[photoB.id] || 1500)}</div>`;
-    html += `<div class="bracket-stats">${statsB.wins}W-${statsB.losses}L</div>`;
     html += `</div></div>`;
     
     html += `</div></div></div>`;
