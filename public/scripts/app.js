@@ -1919,7 +1919,8 @@ function renderBracket() {
         const photoAWon = winnerId === photoA.id;
         const photoBWon = winnerId === photoB.id;
         
-        html += `<div class="bracket-match ${isCurrentMatch ? 'current' : ''} ${battle ? 'decided' : ''}">`;
+        // Container único para cada batalha
+        html += `<div class="bracket-battle-container ${isCurrentMatch ? 'current' : ''} ${battle ? 'decided' : ''}" data-match-id="${photoA.id}-${photoB.id}">`;
         
         // Slot Foto A
         html += `<div class="bracket-slot ${photoAWon ? 'winner' : ''} ${photoBWon ? 'loser' : ''}">`;
@@ -1929,7 +1930,7 @@ function renderBracket() {
         if (photoAWon) html += '<span class="bracket-check">✓</span>';
         html += `</div></div>`;
         
-        // Linha horizontal entre fotos
+        // Linha horizontal entre fotos (dentro do container)
         html += `<div class="bracket-line-h"></div>`;
         
         // Slot Foto B
@@ -1940,12 +1941,12 @@ function renderBracket() {
         if (photoBWon) html += '<span class="bracket-check">✓</span>';
         html += `</div></div>`;
         
-        // Linha conectora para próxima rodada (se não for última e já foi decidido)
-        if (roundNum < maxRounds && battle) {
-          html += `<div class="bracket-connector"></div>`;
-        }
+        html += `</div>`; // Fecha bracket-battle-container
         
-        html += `</div>`;
+        // Flecha conectora para próxima rodada (fora do container, se não for última e já foi decidido)
+        if (roundNum < maxRounds && battle) {
+          html += `<div class="bracket-arrow" data-from-match="${photoA.id}-${photoB.id}"></div>`;
+        }
       });
     }
     
