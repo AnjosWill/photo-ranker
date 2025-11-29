@@ -4582,9 +4582,18 @@ function loadContestState() {
     console.log('[DEBUG] loadContestState: Estado parseado:', state);
     
     // Reconstruir objetos Photo completos
+    // IMPORTANTE: allPhotos deve estar disponível (carregado antes de loadContestState)
+    if (!allPhotos || allPhotos.length === 0) {
+      console.warn('[DEBUG] loadContestState: allPhotos não está disponível ainda!');
+      contestState = null;
+      return;
+    }
+    
     const qualifiedPhotos = state.qualifiedPhotoIds
       .map(id => allPhotos.find(p => p.id === id))
       .filter(Boolean);
+    
+    console.log('[DEBUG] loadContestState: qualifiedPhotos reconstruídas:', qualifiedPhotos.length, 'de', state.qualifiedPhotoIds.length);
     
     // Reconstruir fase classificatória
     let qualifying = null;
