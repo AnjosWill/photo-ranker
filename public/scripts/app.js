@@ -2292,9 +2292,21 @@ async function renderBattle() {
 async function renderQualifyingBattle() {
   const container = $('#contestView');
   const { qualifying, eloScores, battleHistory, qualifiedPhotos } = contestState;
+  
+  console.log('[DEBUG] renderQualifyingBattle - qualifying:', qualifying);
+  console.log('[DEBUG] renderQualifyingBattle - currentMatch:', qualifying?.currentMatch);
+  console.log('[DEBUG] renderQualifyingBattle - pendingMatches:', qualifying?.pendingMatches?.length);
+  
+  // Se não há currentMatch, tentar pegar da fila
+  if (!qualifying.currentMatch && qualifying.pendingMatches.length > 0) {
+    console.log('[DEBUG] currentMatch vazio, pegando da fila');
+    qualifying.currentMatch = qualifying.pendingMatches.shift() || null;
+  }
+  
   const { currentMatch } = qualifying;
   
   if (!currentMatch) {
+    console.log('[DEBUG] Sem mais batalhas - finalizando classificatória');
     // Sem mais batalhas - finalizar classificatória
     await finishQualifyingAndStartBracket();
     return;
@@ -3133,12 +3145,27 @@ async function chooseBattleWinner(winner) {
  */
 async function handleQualifyingBattle(winner) {
   console.log('[DEBUG] handleQualifyingBattle iniciado');
+  console.log('[DEBUG] contestState.qualifying:', contestState.qualifying);
   
   try {
+    // Verificar se currentMatch existe, se não, tentar pegar da fila
+    if (!contestState.qualifying.currentMatch) {
+      console.log('[DEBUG] currentMatch vazio, tentando pegar da fila');
+      if (contestState.qualifying.pendingMatches.length > 0) {
+        contestState.qualifying.currentMatch = contestState.qualifying.pendingMatches.shift();
+        console.log('[DEBUG] Novo currentMatch da fila:', contestState.qualifying.currentMatch);
+      } else {
+        console.error('[DEBUG] Não há mais batalhas na fila!');
+        await finishQualifyingAndStartBracket();
+        return;
+      }
+    }
+    
     const { currentMatch, eloScores, qualifying } = contestState;
     
     if (!currentMatch) {
-      console.error('[DEBUG] currentMatch não existe!');
+      console.error('[DEBUG] currentMatch ainda não existe após tentar pegar da fila!');
+      console.error('[DEBUG] Estado completo:', contestState);
       return;
     }
     
