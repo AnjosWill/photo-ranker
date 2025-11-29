@@ -3523,6 +3523,22 @@ function loadContestState() {
         photoB: allPhotos.find(p => p.id === state.qualifying.currentMatch.photoB)
       } : null;
       
+      // Se currentMatch não foi reconstruído, tentar pegar da fila
+      let finalCurrentMatch = currentMatch;
+      if (!finalCurrentMatch && state.qualifying.pendingMatches && state.qualifying.pendingMatches.length > 0) {
+        const firstPending = state.qualifying.pendingMatches[0];
+        finalCurrentMatch = {
+          photoA: allPhotos.find(p => p.id === firstPending.photoA),
+          photoB: allPhotos.find(p => p.id === firstPending.photoB)
+        };
+        if (finalCurrentMatch.photoA && finalCurrentMatch.photoB) {
+          // Remover da fila pois será o currentMatch
+          state.qualifying.pendingMatches = state.qualifying.pendingMatches.slice(1);
+        } else {
+          finalCurrentMatch = null;
+        }
+      }
+      
       const pendingMatches = state.qualifying.pendingMatches.map(m => ({
         photoA: allPhotos.find(p => p.id === m.photoA),
         photoB: allPhotos.find(p => p.id === m.photoB)
@@ -3532,10 +3548,17 @@ function loadContestState() {
         totalBattles: state.qualifying.totalBattles,
         completedBattles: state.qualifying.completedBattles,
         battlesPerPhoto: state.qualifying.battlesPerPhoto,
-        currentMatch: currentMatch,
+        currentMatch: finalCurrentMatch,
         pendingMatches: pendingMatches,
         eloHistory: state.qualifying.eloHistory || {}
       };
+      
+      console.log('[DEBUG] loadContestState - qualifying reconstruído:', {
+        currentMatch: finalCurrentMatch,
+        pendingMatches: pendingMatches.length,
+        completedBattles: qualifying.completedBattles,
+        totalBattles: qualifying.totalBattles
+      });
     }
     
     // Reconstruir fase bracket
