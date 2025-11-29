@@ -1941,12 +1941,12 @@ function renderBracket() {
         if (photoBWon) html += '<span class="bracket-check">✓</span>';
         html += `</div></div>`;
         
-        html += `</div>`; // Fecha bracket-battle-container
-        
-        // Flecha conectora para próxima rodada (fora do container, se não for última e já foi decidido)
+        // Flecha conectora para próxima rodada (dentro do container, posicionada externamente)
         if (roundNum < maxRounds && battle) {
           html += `<div class="bracket-arrow" data-from-match="${photoA.id}-${photoB.id}"></div>`;
         }
+        
+        html += `</div>`; // Fecha bracket-battle-container
       });
     }
     

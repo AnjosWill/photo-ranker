@@ -1437,10 +1437,10 @@ body.selection-mode .split-btn {
   border-radius: 1px;
 }
 
-/* Flecha conectora entre rodadas (fora dos containers) */
+/* Flecha conectora entre rodadas (sai do lado externo do container) */
 .bracket-arrow {
   position: absolute;
-  right: -120px; /* Posiciona entre as colunas */
+  right: -110px; /* Sai do lado direito do container */
   top: 50%;
   transform: translateY(-50%);
   width: 100px;
