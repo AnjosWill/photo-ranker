@@ -1867,6 +1867,92 @@ function getPreviousWinner(photoAId, photoBId, battleHistory) {
 }
 
 /**
+ * Renderiza bracket visual (chaves do torneio)
+ * @returns {string} HTML do bracket
+ */
+function renderBracket() {
+  if (!contestState) return '';
+  
+  const { qualifiedPhotos, allMatches, currentMatchIndex, currentRound, battleHistory, eloScores } = contestState;
+  
+  // Organizar confrontos por rodada
+  const rounds = {};
+  allMatches.forEach(match => {
+    if (!rounds[match.round]) rounds[match.round] = [];
+    rounds[match.round].push(match);
+  });
+  
+  // Obter vencedores por rodada
+  const winnersByRound = {};
+  battleHistory.forEach(battle => {
+    if (!winnersByRound[battle.round]) winnersByRound[battle.round] = [];
+    if (!winnersByRound[battle.round].includes(battle.winner)) {
+      winnersByRound[battle.round].push(battle.winner);
+    }
+  });
+  
+  // Identificar confronto atual
+  const currentMatch = allMatches[currentMatchIndex];
+  
+  let html = '<div class="bracket-container">';
+  
+  // Renderizar cada rodada
+  Object.keys(rounds).sort((a, b) => a - b).forEach(roundNum => {
+    const round = parseInt(roundNum);
+    const matches = rounds[round];
+    const isCurrentRound = round === currentRound;
+    
+    html += `<div class="bracket-round ${isCurrentRound ? 'active' : ''}" data-round="${round}">`;
+    html += `<div class="bracket-round-label">Rodada ${round}</div>`;
+    
+    matches.forEach((match, matchIdx) => {
+      const photoA = match.photoA;
+      const photoB = match.photoB;
+      const isCurrentMatch = currentMatch && 
+        ((match.photoA.id === currentMatch.photoA.id && match.photoB.id === currentMatch.photoB.id) ||
+         (match.photoA.id === currentMatch.photoB.id && match.photoB.id === currentMatch.photoA.id));
+      
+      // Verificar se já foi decidido
+      const battle = battleHistory.find(b => 
+        ((b.photoA === photoA.id && b.photoB === photoB.id) ||
+         (b.photoA === photoB.id && b.photoB === photoA.id)) &&
+        b.round === round
+      );
+      
+      const winnerId = battle ? battle.winner : null;
+      const photoAWon = winnerId === photoA.id;
+      const photoBWon = winnerId === photoB.id;
+      
+      html += `<div class="bracket-match ${isCurrentMatch ? 'current' : ''} ${battle ? 'decided' : ''}">`;
+      
+      // Foto A
+      html += `<div class="bracket-slot ${photoAWon ? 'winner' : ''} ${photoBWon ? 'loser' : ''}">`;
+      html += `<img src="${photoA.thumb}" alt="Foto A" class="bracket-thumb">`;
+      html += `<div class="bracket-elo">${Math.round(eloScores[photoA.id] || 1500)}</div>`;
+      if (photoAWon) html += '<span class="bracket-check">✓</span>';
+      html += `</div>`;
+      
+      // VS
+      html += `<div class="bracket-vs">VS</div>`;
+      
+      // Foto B
+      html += `<div class="bracket-slot ${photoBWon ? 'winner' : ''} ${photoAWon ? 'loser' : ''}">`;
+      html += `<img src="${photoB.thumb}" alt="Foto B" class="bracket-thumb">`;
+      html += `<div class="bracket-elo">${Math.round(eloScores[photoB.id] || 1500)}</div>`;
+      if (photoBWon) html += '<span class="bracket-check">✓</span>';
+      html += `</div>`;
+      
+      html += `</div>`;
+    });
+    
+    html += `</div>`;
+  });
+  
+  html += '</div>';
+  return html;
+}
+
+/**
  * Renderiza interface de confronto
  */
 async function renderBattle() {
@@ -1912,35 +1998,43 @@ async function renderBattle() {
   ) + 1;
   
   container.innerHTML = `
-    <div class="contest-battle">
-      <div class="contest-progress">
-        <strong>Rodada ${currentRound} de ${totalRounds}</strong><br>
-        Confronto <span class="current">${currentRoundIndex}</span> de ${currentRoundMatches.length}
+    <div class="contest-battle-wrapper">
+      <!-- Bracket Visual (Sidebar) -->
+      <div class="contest-bracket-sidebar" id="contestBracket">
+        ${renderBracket()}
       </div>
       
-      <div class="battle-container">
-        <!-- Foto A -->
-        <div class="battle-photo" id="battlePhotoA" tabindex="0" role="button" aria-label="Escolher Foto A (1 ou ←)">
-          <img src="${photoA.thumb}" alt="Foto A">
-          <div class="battle-label">1</div>
-          <div class="battle-elo">Elo: ${eloA}</div>
+      <!-- Battle Interface (Main) -->
+      <div class="contest-battle">
+        <div class="contest-progress">
+          <strong>Rodada ${currentRound} de ${totalRounds}</strong><br>
+          Confronto <span class="current">${currentRoundIndex}</span> de ${currentRoundMatches.length}
         </div>
         
-        <!-- VS -->
-        <div class="battle-vs">
-          <span>VS</span>
+        <div class="battle-container">
+          <!-- Foto A -->
+          <div class="battle-photo" id="battlePhotoA" tabindex="0" role="button" aria-label="Escolher Foto A (1 ou ←)">
+            <img src="${photoA.thumb}" alt="Foto A">
+            <div class="battle-label">1</div>
+            <div class="battle-elo">Elo: ${eloA}</div>
+          </div>
+          
+          <!-- VS -->
+          <div class="battle-vs">
+            <span>VS</span>
+          </div>
+          
+          <!-- Foto B -->
+          <div class="battle-photo" id="battlePhotoB" tabindex="0" role="button" aria-label="Escolher Foto B (2 ou →)">
+            <img src="${photoB.thumb}" alt="Foto B">
+            <div class="battle-label">2</div>
+            <div class="battle-elo">Elo: ${eloB}</div>
+          </div>
         </div>
         
-        <!-- Foto B -->
-        <div class="battle-photo" id="battlePhotoB" tabindex="0" role="button" aria-label="Escolher Foto B (2 ou →)">
-          <img src="${photoB.thumb}" alt="Foto B">
-          <div class="battle-label">2</div>
-          <div class="battle-elo">Elo: ${eloB}</div>
+        <div class="battle-actions">
+          <button class="btn btn-secondary" id="cancelContest">Cancelar Contest</button>
         </div>
-      </div>
-      
-      <div class="battle-actions">
-        <button class="btn btn-secondary" id="cancelContest">Cancelar Contest</button>
       </div>
     </div>
   `;

@@ -1106,10 +1106,141 @@ body.selection-mode .split-btn {
 }
 
 /* Layout de batalha (será usado em F4.3) */
+.contest-battle-wrapper {
+  display: grid;
+  grid-template-columns: 320px 1fr;
+  gap: var(--gap-4);
+  max-width: 1920px;
+  margin: 0 auto;
+  padding: var(--gap-4);
+}
+
+.contest-bracket-sidebar {
+  background: rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(12px);
+  border-radius: 16px;
+  padding: var(--gap-3);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  overflow-y: auto;
+  max-height: calc(100vh - 200px);
+  position: sticky;
+  top: var(--gap-4);
+}
+
+.bracket-container {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-4);
+}
+
+.bracket-round {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-2);
+  opacity: 0.5;
+  transition: opacity 0.3s ease;
+}
+
+.bracket-round.active {
+  opacity: 1;
+}
+
+.bracket-round-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--brand);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: var(--gap-1);
+  padding: 4px 8px;
+  background: rgba(106, 163, 255, 0.1);
+  border-radius: 6px;
+  text-align: center;
+}
+
+.bracket-match {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  transition: all 0.2s ease;
+}
+
+.bracket-match.current {
+  background: rgba(106, 163, 255, 0.15);
+  border-color: var(--brand);
+  box-shadow: 0 0 16px rgba(106, 163, 255, 0.3);
+}
+
+.bracket-match.decided {
+  opacity: 0.7;
+}
+
+.bracket-slot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.02);
+  position: relative;
+  transition: all 0.2s ease;
+}
+
+.bracket-slot.winner {
+  background: rgba(61, 220, 151, 0.15);
+  border: 1px solid rgba(61, 220, 151, 0.3);
+}
+
+.bracket-slot.loser {
+  opacity: 0.4;
+}
+
+.bracket-thumb {
+  width: 40px;
+  height: 40px;
+  object-fit: cover;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.bracket-elo {
+  flex: 1;
+  font-size: 11px;
+  color: var(--muted);
+  text-align: right;
+  font-weight: 600;
+}
+
+.bracket-check {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  background: #3ddc97;
+  color: #000;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.bracket-vs {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--muted);
+  text-align: center;
+  padding: 2px 0;
+  opacity: 0.5;
+}
+
 .contest-battle {
   width: 100%;
-  max-width: 1600px;
-  margin: 0 auto;
   padding: var(--gap-4);
 }
 
@@ -1206,6 +1337,19 @@ body.selection-mode .split-btn {
 }
 
 /* Mobile: layout vertical */
+@media (max-width: 1024px) {
+  .contest-battle-wrapper {
+    grid-template-columns: 1fr;
+  }
+  
+  .contest-bracket-sidebar {
+    max-height: 300px;
+    position: relative;
+    top: 0;
+    order: -1;
+  }
+}
+
 @media (max-width: 600px) {
   .battle-container {
     grid-template-columns: 1fr;
@@ -1221,6 +1365,20 @@ body.selection-mode .split-btn {
     font-size: 36px;
     width: 56px;
     height: 56px;
+  }
+  
+  .contest-bracket-sidebar {
+    max-height: 200px;
+    padding: var(--gap-2);
+  }
+  
+  .bracket-thumb {
+    width: 32px;
+    height: 32px;
+  }
+  
+  .bracket-elo {
+    font-size: 10px;
   }
 }
 
