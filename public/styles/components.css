@@ -2793,6 +2793,9 @@ body.selection-mode .split-btn {
 .results-dashboard-column {
   display: flex;
   flex-direction: column;
+  min-width: 0; /* Permite shrink */
+  max-width: 100%;
+  overflow: hidden; /* Prevenir overflow horizontal */
 }
 
 /* Ranking */
@@ -2914,7 +2917,9 @@ body.selection-mode .split-btn {
   border-radius: var(--radius);
   min-height: 0; /* Permite scroll interno */
   overflow-y: auto;
+  overflow-x: hidden; /* Prevenir scroll horizontal */
   max-height: 70vh;
+  max-width: 100%; /* Garantir que não extrapole */
 }
 
 .dashboard-section {
@@ -2923,6 +2928,9 @@ body.selection-mode .split-btn {
   background: rgba(255, 255, 255, 0.02);
   border-radius: var(--radius);
   flex-shrink: 0;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 .dashboard-section:last-child {
@@ -2938,33 +2946,90 @@ body.selection-mode .split-btn {
 
 .dashboard-heatmap {
   overflow-x: auto;
+  overflow-y: hidden;
   padding: var(--gap-2);
+  max-width: 100%;
+  width: 100%;
+  box-sizing: border-box;
+  /* Scrollbar customizada */
+  scrollbar-width: thin;
+  scrollbar-color: rgba(106, 163, 255, 0.5) rgba(255, 255, 255, 0.1);
+}
+
+.dashboard-heatmap::-webkit-scrollbar {
+  height: 8px;
+}
+
+.dashboard-heatmap::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 4px;
+}
+
+.dashboard-heatmap::-webkit-scrollbar-thumb {
+  background: rgba(106, 163, 255, 0.5);
+  border-radius: 4px;
+}
+
+.dashboard-heatmap::-webkit-scrollbar-thumb:hover {
+  background: rgba(106, 163, 255, 0.7);
 }
 
 /* Histórico de Brackets no Dashboard */
 .dashboard-bracket-history {
   overflow-x: auto;
+  overflow-y: hidden;
   padding: var(--gap-2);
+  max-width: 100%;
+  width: 100%;
+  box-sizing: border-box;
+  /* Scrollbar customizada */
+  scrollbar-width: thin;
+  scrollbar-color: rgba(106, 163, 255, 0.5) rgba(255, 255, 255, 0.1);
+}
+
+.dashboard-bracket-history::-webkit-scrollbar {
+  height: 8px;
+}
+
+.dashboard-bracket-history::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 4px;
+}
+
+.dashboard-bracket-history::-webkit-scrollbar-thumb {
+  background: rgba(106, 163, 255, 0.5);
+  border-radius: 4px;
+}
+
+.dashboard-bracket-history::-webkit-scrollbar-thumb:hover {
+  background: rgba(106, 163, 255, 0.7);
 }
 
 .bracket-history-diagram {
   display: flex;
-  gap: var(--gap-4);
+  gap: var(--gap-3);
   min-width: fit-content;
+  width: max-content; /* Permite scroll horizontal interno */
 }
 
 .bracket-history-scroll {
   display: flex;
-  gap: var(--gap-4);
+  gap: var(--gap-3);
   overflow-x: auto;
+  overflow-y: hidden;
   padding: var(--gap-2);
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 .bracket-history-column {
   display: flex;
   flex-direction: column;
   gap: var(--gap-2);
-  min-width: 280px;
+  min-width: 240px;
+  max-width: 280px;
+  flex-shrink: 0;
 }
 
 .bracket-history-column-label {
