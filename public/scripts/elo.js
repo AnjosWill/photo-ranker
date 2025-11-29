@@ -314,15 +314,20 @@ function generateNextRound(bracket, completedRoundIndex) {
     return;
   }
   
+  console.log('[DEBUG] generateNextRound: Round', completedRoundIndex + 1, 'completado, tipo:', completedRound.type);
+  
   // Se é round inicial, criar Round 2 - Winners e Round 2 - Losers
   if (completedRound.type === 'initial') {
-    // Winners Round 2
-    if (completedRound.winners.length >= 2) {
+    // Winners Round 2: pegar TODOS os winners do Round 1
+    const winnerPhotos = completedRound.matches
+      .filter(m => m.completed && m.winner && !m.bye)
+      .map(m => m.winner)
+      .filter((photo, index, self) => self.findIndex(p => p.id === photo.id) === index); // Remover duplicatas
+    
+    console.log('[DEBUG] generateNextRound: Winners do Round 1:', winnerPhotos.length, winnerPhotos.map(p => p.id));
+    
+    if (winnerPhotos.length >= 2) {
       const winnersMatches = [];
-      const winnerPhotos = completedRound.matches
-        .filter(m => m.winner && !m.bye)
-        .map(m => m.winner);
-      
       for (let i = 0; i < winnerPhotos.length; i += 2) {
         if (i + 1 < winnerPhotos.length) {
           winnersMatches.push({
@@ -331,6 +336,16 @@ function generateNextRound(bracket, completedRoundIndex) {
             winner: null,
             loser: null,
             completed: false
+          });
+        } else {
+          // Foto ímpar - bye (avança direto)
+          winnersMatches.push({
+            photoA: winnerPhotos[i],
+            photoB: null,
+            winner: winnerPhotos[i],
+            loser: null,
+            completed: true,
+            bye: true
           });
         }
       }
@@ -344,16 +359,20 @@ function generateNextRound(bracket, completedRoundIndex) {
           losers: [],
           completed: false
         });
+        console.log('[DEBUG] generateNextRound: Round 2 - Winners criado com', winnersMatches.length, 'matches');
       }
     }
     
-    // Losers Round 2 (Consolation)
-    if (completedRound.losers.length >= 2) {
+    // Losers Round 2 (Consolation): pegar TODOS os losers do Round 1
+    const loserPhotos = completedRound.matches
+      .filter(m => m.completed && m.loser)
+      .map(m => m.loser)
+      .filter((photo, index, self) => self.findIndex(p => p.id === photo.id) === index); // Remover duplicatas
+    
+    console.log('[DEBUG] generateNextRound: Losers do Round 1:', loserPhotos.length, loserPhotos.map(p => p.id));
+    
+    if (loserPhotos.length >= 2) {
       const losersMatches = [];
-      const loserPhotos = completedRound.matches
-        .filter(m => m.loser)
-        .map(m => m.loser);
-      
       for (let i = 0; i < loserPhotos.length; i += 2) {
         if (i + 1 < loserPhotos.length) {
           losersMatches.push({
@@ -362,6 +381,16 @@ function generateNextRound(bracket, completedRoundIndex) {
             winner: null,
             loser: null,
             completed: false
+          });
+        } else {
+          // Foto ímpar - bye (avança direto)
+          losersMatches.push({
+            photoA: loserPhotos[i],
+            photoB: null,
+            winner: loserPhotos[i],
+            loser: null,
+            completed: true,
+            bye: true
           });
         }
       }
@@ -375,13 +404,107 @@ function generateNextRound(bracket, completedRoundIndex) {
           losers: [],
           completed: false
         });
+        console.log('[DEBUG] generateNextRound: Round 2 - Losers criado com', losersMatches.length, 'matches');
       }
     }
-  } else {
-    // Rounds subsequentes: continuar gerando winners e losers
-    // TODO: Implementar lógica para rounds 3+
+  } else if (completedRound.type === 'winners') {
+    // Round de Winners: gerar próximo round de winners
+    const winnerPhotos = completedRound.matches
+      .filter(m => m.completed && m.winner && !m.bye)
+      .map(m => m.winner)
+      .filter((photo, index, self) => self.findIndex(p => p.id === photo.id) === index); // Remover duplicatas
+    
+    console.log('[DEBUG] generateNextRound: Winners do round anterior:', winnerPhotos.length, winnerPhotos.map(p => p.id));
+    
+    if (winnerPhotos.length >= 2) {
+      const winnersMatches = [];
+      for (let i = 0; i < winnerPhotos.length; i += 2) {
+        if (i + 1 < winnerPhotos.length) {
+          winnersMatches.push({
+            photoA: winnerPhotos[i],
+            photoB: winnerPhotos[i + 1],
+            winner: null,
+            loser: null,
+            completed: false
+          });
+        } else {
+          // Foto ímpar - bye
+          winnersMatches.push({
+            photoA: winnerPhotos[i],
+            photoB: null,
+            winner: winnerPhotos[i],
+            loser: null,
+            completed: true,
+            bye: true
+          });
+        }
+      }
+      
+      if (winnersMatches.length > 0) {
+        const nextRoundNum = Math.max(...bracket.rounds.map(r => r.round)) + 1;
+        bracket.rounds.push({
+          round: nextRoundNum,
+          type: 'winners',
+          matches: winnersMatches,
+          winners: [],
+          losers: [],
+          completed: false
+        });
+        console.log('[DEBUG] generateNextRound: Round', nextRoundNum, '- Winners criado com', winnersMatches.length, 'matches');
+      }
+    } else if (winnerPhotos.length === 1) {
+      // Apenas 1 winner restante - campeão!
+      console.log('[DEBUG] generateNextRound: Campeão encontrado!', winnerPhotos[0].id);
+    }
+  } else if (completedRound.type === 'losers') {
+    // Round de Losers: gerar próximo round de losers (se houver mais de 1)
+    const winnerPhotos = completedRound.matches
+      .filter(m => m.completed && m.winner && !m.bye)
+      .map(m => m.winner)
+      .filter((photo, index, self) => self.findIndex(p => p.id === photo.id) === index);
+    
+    console.log('[DEBUG] generateNextRound: Winners do round losers anterior:', winnerPhotos.length, winnerPhotos.map(p => p.id));
+    
+    if (winnerPhotos.length >= 2) {
+      const losersMatches = [];
+      for (let i = 0; i < winnerPhotos.length; i += 2) {
+        if (i + 1 < winnerPhotos.length) {
+          losersMatches.push({
+            photoA: winnerPhotos[i],
+            photoB: winnerPhotos[i + 1],
+            winner: null,
+            loser: null,
+            completed: false
+          });
+        } else {
+          // Foto ímpar - bye
+          losersMatches.push({
+            photoA: winnerPhotos[i],
+            photoB: null,
+            winner: winnerPhotos[i],
+            loser: null,
+            completed: true,
+            bye: true
+          });
+        }
+      }
+      
+      if (losersMatches.length > 0) {
+        const nextRoundNum = Math.max(...bracket.rounds.map(r => r.round)) + 1;
+        bracket.rounds.push({
+          round: nextRoundNum,
+          type: 'losers',
+          matches: losersMatches,
+          winners: [],
+          losers: [],
+          completed: false
+        });
+        console.log('[DEBUG] generateNextRound: Round', nextRoundNum, '- Losers criado com', losersMatches.length, 'matches');
+      }
+    }
   }
   
-  bracket.currentRound = bracket.rounds.length;
+  // Atualizar currentRound apenas se não estiver sendo controlado externamente
+  // (não atualizar aqui para evitar conflitos)
 }
 
