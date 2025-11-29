@@ -68,19 +68,24 @@ body {
   padding: var(--gap-3);
 }
 
-/* Tela de Contest: ocupar todo espaço disponível - remover todas as limitações */
+/* Tela de Contest: ocupar todo espaço disponível - quebrar limitações do container */
 .app-main [data-route="contest"] {
-  margin: 0 calc(-1 * var(--gap-3)); /* Compensar padding do app-main */
+  margin-left: calc(-1 * var(--gap-3));
+  margin-right: calc(-1 * var(--gap-3));
   padding: 0;
   max-width: none !important;
-  width: calc(100vw - 2 * var(--gap-3)); /* Largura total da viewport menos padding */
+  width: 100vw; /* Largura total da viewport */
   position: relative;
-  left: calc(-50vw + 50% + var(--gap-3)); /* Centralizar e compensar padding */
+  left: 50%;
+  right: 50%;
+  margin-left: -50vw;
+  margin-right: -50vw;
 }
 
 .app-main [data-route="contest"] .contest-view {
   padding: var(--gap-4);
   max-width: 100%;
+  margin: 0 auto;
 }
 
 /* Navegação (tabs) */
