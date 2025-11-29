@@ -4439,14 +4439,38 @@ function saveContestState() {
         totalBattles: contestState.qualifying.totalBattles,
         completedBattles: contestState.qualifying.completedBattles,
         battlesPerPhoto: contestState.qualifying.battlesPerPhoto,
+        // NOVO: Salvar bracket
+        bracket: contestState.qualifying.bracket ? {
+          rounds: contestState.qualifying.bracket.rounds.map(round => ({
+            round: round.round,
+            type: round.type,
+            matches: round.matches.map(match => ({
+              photoAId: match.photoA?.id || null,
+              photoBId: match.photoB?.id || null,
+              winnerId: match.winner?.id || null,
+              loserId: match.loser?.id || null,
+              completed: match.completed || false,
+              bye: match.bye || false
+            })),
+            winners: round.winners || [],
+            losers: round.losers || [],
+            completed: round.completed || false
+          })),
+          currentRound: contestState.qualifying.bracket.currentRound || 0,
+          currentMatchIndex: contestState.qualifying.bracket.currentMatchIndex || 0,
+          totalRounds: contestState.qualifying.bracket.totalRounds || 0
+        } : null,
+        currentRound: contestState.qualifying.currentRound || 0,
+        currentMatchIndex: contestState.qualifying.currentMatchIndex || 0,
+        // SISTEMA ANTERIOR (mantido para compatibilidade):
         currentMatch: contestState.qualifying.currentMatch ? {
           photoA: contestState.qualifying.currentMatch.photoA.id,
           photoB: contestState.qualifying.currentMatch.photoB.id
         } : null,
-        pendingMatches: contestState.qualifying.pendingMatches.map(m => ({
+        pendingMatches: contestState.qualifying.pendingMatches?.map(m => ({
           photoA: m.photoA.id,
           photoB: m.photoB.id
-        })),
+        })) || [],
         eloHistory: contestState.qualifying.eloHistory
       } : null,
       
@@ -4502,12 +4526,37 @@ function loadContestState() {
     // Reconstruir fase classificatória
     let qualifying = null;
     if (state.qualifying) {
+      // NOVO: Reconstruir bracket se existir
+      let bracket = null;
+      if (state.qualifying.bracket) {
+        bracket = {
+          rounds: state.qualifying.bracket.rounds.map(round => ({
+            round: round.round,
+            type: round.type,
+            matches: round.matches.map(match => ({
+              photoA: match.photoAId ? allPhotos.find(p => p.id === match.photoAId) : null,
+              photoB: match.photoBId ? allPhotos.find(p => p.id === match.photoBId) : null,
+              winner: match.winnerId ? allPhotos.find(p => p.id === match.winnerId) : null,
+              loser: match.loserId ? allPhotos.find(p => p.id === match.loserId) : null,
+              completed: match.completed || false,
+              bye: match.bye || false
+            })).filter(m => m.photoA || m.photoB), // Filtrar matches inválidos
+            winners: round.winners || [],
+            losers: round.losers || [],
+            completed: round.completed || false
+          })),
+          currentRound: state.qualifying.bracket.currentRound || 0,
+          currentMatchIndex: state.qualifying.bracket.currentMatchIndex || 0,
+          totalRounds: state.qualifying.bracket.totalRounds || 0
+        };
+      }
+      
+      // SISTEMA ANTERIOR (mantido para compatibilidade):
       const currentMatch = state.qualifying.currentMatch ? {
         photoA: allPhotos.find(p => p.id === state.qualifying.currentMatch.photoA),
         photoB: allPhotos.find(p => p.id === state.qualifying.currentMatch.photoB)
       } : null;
       
-      // Se currentMatch não foi reconstruído, tentar pegar da fila
       let finalCurrentMatch = currentMatch;
       if (!finalCurrentMatch && state.qualifying.pendingMatches && state.qualifying.pendingMatches.length > 0) {
         const firstPending = state.qualifying.pendingMatches[0];
@@ -4516,28 +4565,35 @@ function loadContestState() {
           photoB: allPhotos.find(p => p.id === firstPending.photoB)
         };
         if (finalCurrentMatch.photoA && finalCurrentMatch.photoB) {
-          // Remover da fila pois será o currentMatch
           state.qualifying.pendingMatches = state.qualifying.pendingMatches.slice(1);
         } else {
           finalCurrentMatch = null;
         }
       }
       
-      const pendingMatches = state.qualifying.pendingMatches.map(m => ({
+      const pendingMatches = (state.qualifying.pendingMatches || []).map(m => ({
         photoA: allPhotos.find(p => p.id === m.photoA),
         photoB: allPhotos.find(p => p.id === m.photoB)
       })).filter(m => m.photoA && m.photoB);
       
       qualifying = {
-        totalBattles: state.qualifying.totalBattles,
-        completedBattles: state.qualifying.completedBattles,
+        totalBattles: state.qualifying.totalBattles || 0,
+        completedBattles: state.qualifying.completedBattles || 0,
         battlesPerPhoto: state.qualifying.battlesPerPhoto,
+        // NOVO: bracket reconstruído
+        bracket: bracket,
+        currentRound: state.qualifying.currentRound || 0,
+        currentMatchIndex: state.qualifying.currentMatchIndex || 0,
+        // SISTEMA ANTERIOR (mantido para compatibilidade):
         currentMatch: finalCurrentMatch,
         pendingMatches: pendingMatches,
         eloHistory: state.qualifying.eloHistory || {}
       };
       
       console.log('[DEBUG] loadContestState - qualifying reconstruído:', {
+        hasBracket: !!bracket,
+        currentRound: qualifying.currentRound,
+        currentMatchIndex: qualifying.currentMatchIndex,
         currentMatch: finalCurrentMatch,
         pendingMatches: pendingMatches.length,
         completedBattles: qualifying.completedBattles,
