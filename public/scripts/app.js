@@ -2166,18 +2166,20 @@ async function startContest() {
   const battlesPerPhoto = calculateBattlesPerPhoto(qualifiedPhotos.length);
   const totalBattles = Math.ceil((qualifiedPhotos.length * battlesPerPhoto) / 2);
   
-  // Gerar batalhas da fase classificatória
-  const qualifyingMatches = generateQualifyingBattles(
+  // Sistema Elo/MMR: Não gerar todas as batalhas de uma vez
+  // Gerar batalhas dinamicamente conforme o Elo evolui
+  // Iniciar com algumas batalhas iniciais para começar o ranking
+  const initialMatches = generateQualifyingBattles(
     qualifiedPhotos, 
-    battlesPerPhoto, 
+    Math.min(2, battlesPerPhoto), // Começar com 2 batalhas por foto
     eloScores, 
     []
   );
   
-  console.log('[DEBUG] startContest - qualifyingMatches geradas:', qualifyingMatches.length);
-  console.log('[DEBUG] startContest - primeira batalha:', qualifyingMatches[0]);
+  console.log('[DEBUG] startContest - initialMatches geradas:', initialMatches.length);
+  console.log('[DEBUG] startContest - primeira batalha:', initialMatches[0]);
   
-  if (qualifyingMatches.length === 0) {
+  if (initialMatches.length === 0) {
     toast('Erro: Não foi possível gerar batalhas. Verifique se há fotos suficientes.');
     return;
   }
@@ -2196,9 +2198,11 @@ async function startContest() {
       totalBattles: totalBattles,
       completedBattles: 0,
       battlesPerPhoto: battlesPerPhoto,
-      currentMatch: qualifyingMatches[0] || null,
-      pendingMatches: qualifyingMatches.slice(1),
-      eloHistory: eloHistory
+      currentMatch: initialMatches[0] || null,
+      pendingMatches: initialMatches.slice(1),
+      eloHistory: eloHistory,
+      // Sistema dinâmico: gerar mais batalhas conforme Elo evolui
+      dynamicMatching: true
     },
     
     bracket: null, // Será preenchido ao finalizar classificatória
@@ -3693,9 +3697,9 @@ async function handleQualifyingBattle(winner) {
       return;
     }
     
-    // Próxima batalha da fila
-    // IMPORTANTE: Filtrar matches que já foram batalhadas (caso tenha sido adicionada depois)
-    const remainingMatches = contestState.qualifying.pendingMatches.filter(match => {
+    // Sistema Elo/MMR: Gerar próxima batalha dinamicamente baseado no Elo atual
+    // Filtrar matches pendentes que já foram batalhadas
+    let remainingMatches = contestState.qualifying.pendingMatches.filter(match => {
       const pairKey = [match.photoA.id, match.photoB.id].sort().join('-');
       return !contestState.battleHistory.some(b => {
         const battleKey = [b.photoA, b.photoB].sort().join('-');
@@ -3703,15 +3707,59 @@ async function handleQualifyingBattle(winner) {
       });
     });
     
+    // Se não há matches na fila ou fila está baixa, gerar novas batalhas dinamicamente
+    if (remainingMatches.length < 3 && contestState.qualifying.dynamicMatching) {
+      console.log('[DEBUG] Gerando novas batalhas dinamicamente baseado no Elo atual');
+      
+      // Calcular quantas batalhas cada foto ainda precisa
+      const photoBattleCount = {};
+      contestState.qualifiedPhotos.forEach(p => {
+        const battles = contestState.battleHistory.filter(b => 
+          (b.photoA === p.id || b.photoB === p.id) && b.phase === 'qualifying'
+        ).length;
+        photoBattleCount[p.id] = battles;
+      });
+      
+      // Gerar novas batalhas baseadas no Elo atual (pareamento por Elo similar)
+      const newMatches = generateQualifyingBattles(
+        contestState.qualifiedPhotos,
+        contestState.qualifying.battlesPerPhoto,
+        contestState.eloScores, // Usar Elo ATUAL (já atualizado)
+        contestState.battleHistory.filter(b => b.phase === 'qualifying')
+      );
+      
+      // Adicionar apenas matches que ainda não estão na fila
+      newMatches.forEach(match => {
+        const pairKey = [match.photoA.id, match.photoB.id].sort().join('-');
+        const alreadyInQueue = remainingMatches.some(m => {
+          const matchPair = [m.photoA.id, m.photoB.id].sort().join('-');
+          return matchPair === pairKey;
+        });
+        if (!alreadyInQueue) {
+          remainingMatches.push(match);
+        }
+      });
+      
+      console.log('[DEBUG] Novas batalhas geradas:', newMatches.length);
+    }
+    
     contestState.qualifying.pendingMatches = remainingMatches;
     contestState.qualifying.currentMatch = remainingMatches.shift() || null;
     
     console.log('[DEBUG] Próxima batalha:', contestState.qualifying.currentMatch);
     console.log('[DEBUG] Batalhas restantes na fila:', remainingMatches.length);
     
-    // Se não há mais batalhas válidas, finalizar
-    if (!contestState.qualifying.currentMatch && remainingMatches.length === 0) {
-      console.log('[DEBUG] Não há mais batalhas válidas - finalizando classificatória');
+    // Verificar se classificatória terminou (todas as fotos têm batalhas suficientes)
+    const allPhotosHaveEnoughBattles = contestState.qualifiedPhotos.every(p => {
+      const battles = contestState.battleHistory.filter(b => 
+        (b.photoA === p.id || b.photoB === p.id) && b.phase === 'qualifying'
+      ).length;
+      return battles >= contestState.qualifying.battlesPerPhoto;
+    });
+    
+    // Se não há mais batalhas válidas ou todas as fotos têm batalhas suficientes, finalizar
+    if ((!contestState.qualifying.currentMatch && remainingMatches.length === 0) || allPhotosHaveEnoughBattles) {
+      console.log('[DEBUG] Classificatória completa - finalizando');
       await finishQualifyingAndStartBracket();
       return;
     }
