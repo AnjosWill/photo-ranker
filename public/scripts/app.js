@@ -1768,7 +1768,7 @@ async function renderContestView() {
   loadContestState();
   
   // Verificar se há contest ativo
-  if (contestState && contestState.phase === 'battle') {
+  if (contestState && (contestState.phase === 'qualifying' || contestState.phase === 'bracket')) {
     renderBattle();
     return;
   }
