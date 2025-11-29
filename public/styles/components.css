@@ -2477,6 +2477,8 @@ body.selection-mode .split-btn {
   border-radius: 16px;
   padding: var(--gap-4);
   overflow-x: auto;
+  overflow-y: visible;
+  height: fit-content;
 }
 
 .heatmap-legend {
