@@ -5005,12 +5005,6 @@ async function renderResultsView() {
         <div id="resultsBracketHistory" class="dashboard-bracket-history"></div>
       </div>
       
-      <!-- Histórico de Batalhas em Brackets -->
-      <div class="dashboard-section">
-        <h4>Histórico de Batalhas - Brackets</h4>
-        <div id="resultsBracketHistory" class="dashboard-bracket-history"></div>
-      </div>
-      
       <!-- Heatmap -->
       <div class="dashboard-section">
         <h4>Heatmap de Confrontos</h4>
@@ -5069,48 +5063,314 @@ async function renderResultsView() {
   // Renderizar histórico de brackets
   const bracketHistoryContainer = $('#resultsBracketHistory');
   if (bracketHistoryContainer) {
-    bracketHistoryContainer.innerHTML = renderBracketHistory();
+    try {
+      const bracketHtml = renderBracketHistory();
+      console.log('[DEBUG] renderResultsView - bracketHistory HTML:', bracketHtml ? 'OK' : 'VAZIO');
+      bracketHistoryContainer.innerHTML = bracketHtml || '<p class="muted">Nenhum histórico de brackets disponível.</p>';
+    } catch (err) {
+      console.error('[DEBUG] renderResultsView - Erro ao renderizar bracket history:', err);
+      bracketHistoryContainer.innerHTML = '<p class="muted">Erro ao carregar histórico de brackets.</p>';
+    }
+  } else {
+    console.error('[DEBUG] renderResultsView - Container resultsBracketHistory não encontrado!');
   }
   
   // Renderizar heatmap
   const heatmapContainer = $('#resultsHeatmap');
   if (heatmapContainer) {
-    heatmapContainer.innerHTML = renderHeatmap();
+    try {
+      const heatmapHtml = renderHeatmap();
+      console.log('[DEBUG] renderResultsView - heatmap HTML:', heatmapHtml ? 'OK' : 'VAZIO');
+      heatmapContainer.innerHTML = heatmapHtml || '<p class="muted">Nenhum heatmap disponível.</p>';
+    } catch (err) {
+      console.error('[DEBUG] renderResultsView - Erro ao renderizar heatmap:', err);
+      heatmapContainer.innerHTML = '<p class="muted">Erro ao carregar heatmap.</p>';
+    }
+  } else {
+    console.error('[DEBUG] renderResultsView - Container resultsHeatmap não encontrado!');
   }
   
   // Renderizar estatísticas gerais
   const statsContainer = $('#resultsStats');
   if (statsContainer) {
-    const totalBattles = contestState.battleHistory.length;
-    const totalPhotos = ranking.length;
-    const avgScore = ranking.reduce((sum, p) => sum + p.scoreData.score, 0) / totalPhotos;
-    const totalWins = ranking.reduce((sum, p) => sum + p.stats.wins, 0);
-    const totalLosses = ranking.reduce((sum, p) => sum + p.stats.losses, 0);
-    
-    statsContainer.innerHTML = `
-      <div class="stats-grid">
-        <div class="stat-card">
-          <div class="stat-value">${totalPhotos}</div>
-          <div class="stat-label">Fotos Participantes</div>
+    try {
+      const totalBattles = contestState.battleHistory?.length || 0;
+      const totalPhotos = ranking.length;
+      const avgScore = totalPhotos > 0 ? ranking.reduce((sum, p) => sum + p.scoreData.score, 0) / totalPhotos : 0;
+      const totalWins = ranking.reduce((sum, p) => sum + (p.stats?.wins || 0), 0);
+      const totalLosses = ranking.reduce((sum, p) => sum + (p.stats?.losses || 0), 0);
+      
+      statsContainer.innerHTML = `
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-value">${totalPhotos}</div>
+            <div class="stat-label">Fotos Participantes</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value">${totalBattles}</div>
+            <div class="stat-label">Total de Batalhas</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value">${Math.round(avgScore)}</div>
+            <div class="stat-label">Score Médio</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value">${totalWins}W / ${totalLosses}L</div>
+            <div class="stat-label">Recorde Total</div>
+          </div>
         </div>
-        <div class="stat-card">
-          <div class="stat-value">${totalBattles}</div>
-          <div class="stat-label">Total de Batalhas</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-value">${Math.round(avgScore)}</div>
-          <div class="stat-label">Score Médio</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-value">${totalWins}W / ${totalLosses}L</div>
-          <div class="stat-label">Recorde Total</div>
-        </div>
-      </div>
-    `;
+      `;
+      console.log('[DEBUG] renderResultsView - stats renderizados:', { totalPhotos, totalBattles, avgScore, totalWins, totalLosses });
+    } catch (err) {
+      console.error('[DEBUG] renderResultsView - Erro ao renderizar stats:', err);
+      statsContainer.innerHTML = '<p class="muted">Erro ao carregar estatísticas.</p>';
+    }
+  } else {
+    console.error('[DEBUG] renderResultsView - Container resultsStats não encontrado!');
   }
   
   // Event listener para recomeçar
   $('#restartContest')?.addEventListener('click', confirmRestartContest);
+}
+
+/**
+ * Renderiza histórico completo de batalhas em brackets para a tela de resultados
+ * Mostra todos os rounds, duelos e evolução visual
+ */
+function renderBracketHistory() {
+  if (!contestState) {
+    console.log('[DEBUG] renderBracketHistory - contestState não existe');
+    return '<p class="muted">Nenhum histórico disponível.</p>';
+  }
+  
+  // Tentar usar bracket salvo primeiro
+  const bracket = contestState.qualifying?.bracket;
+  
+  if (bracket && bracket.rounds && bracket.rounds.length > 0) {
+    console.log('[DEBUG] renderBracketHistory - usando bracket salvo, rounds:', bracket.rounds.length);
+    return renderBracketHistoryFromBracket(bracket);
+  } else {
+    // Fallback: reconstruir a partir do battleHistory
+    console.log('[DEBUG] renderBracketHistory - usando fallback battleHistory');
+    return renderBracketHistoryFromBattles();
+  }
+}
+
+/**
+ * Renderiza histórico de brackets a partir do bracket salvo
+ */
+function renderBracketHistoryFromBracket(bracket) {
+  const { eloScores, scoresAndTiers, qualifiedPhotos, battleHistory } = contestState;
+  
+  let html = '<div class="bracket-history-diagram">';
+  html += '<div class="bracket-history-scroll">';
+  
+  // Renderizar cada round
+  bracket.rounds.forEach((round, roundIdx) => {
+    const roundTypeLabel = round.type === 'initial' ? 'Rodada Inicial' 
+                         : round.type === 'winners' ? `Rodada ${round.round} - Vencedores`
+                         : round.type === 'losers' ? `Rodada ${round.round} - Perdedores`
+                         : `Rodada ${round.round}`;
+    
+    html += `<div class="bracket-history-column" data-round="${roundIdx}">`;
+    html += `<div class="bracket-history-column-label">${roundTypeLabel}</div>`;
+    html += `<div class="bracket-history-matches">`;
+    
+    round.matches.forEach((match) => {
+      const photoA = match.photoA;
+      const photoB = match.photoB;
+      
+      if (!photoA || (!photoB && !match.bye)) {
+        return; // Match inválido
+      }
+      
+      const scoreA = scoresAndTiers[photoA?.id] || { score: 50, tier: TIERS[4] };
+      const scoreB = photoB ? (scoresAndTiers[photoB.id] || { score: 50, tier: TIERS[4] }) : null;
+      
+      // Verificar se batalha foi completada
+      const isCompleted = match.completed;
+      const winner = match.winner;
+      const loser = match.loser;
+      const photoAWon = winner && winner.id === photoA?.id;
+      const photoBWon = winner && photoB && winner.id === photoB.id;
+      
+      // Buscar batalha no histórico
+      const battle = match.bye ? null : battleHistory.find(b => {
+        const battleIds = [b.photoA, b.photoB].sort();
+        const matchIds = [photoA?.id, photoB?.id].filter(Boolean).sort();
+        return battleIds[0] === matchIds[0] && battleIds[1] === matchIds[1];
+      });
+      
+      html += `<div class="bracket-history-match ${isCompleted ? 'completed' : ''} ${match.bye ? 'bye' : ''}">`;
+      
+      // Foto A
+      if (photoA) {
+        html += `<div class="bracket-history-slot ${photoAWon ? 'winner' : ''} ${photoBWon ? 'loser' : ''}">`;
+        html += `<img src="${photoA.thumb}" alt="Foto A" class="bracket-history-thumb">`;
+        html += `<div class="bracket-history-info">`;
+        html += `<div class="bracket-history-tier">`;
+        html += `<span class="tier-icon">${scoreA.tier.icon}</span>`;
+        html += `<span class="tier-score">${scoreA.score}/100</span>`;
+        html += `</div>`;
+        if (battle && photoAWon && battle.eloChange) {
+          const eloChange = battle.eloChange.winner || 0;
+          html += `<div class="bracket-history-change positive">+${eloChange} Elo</div>`;
+        }
+        if (photoAWon) html += '<span class="bracket-history-check">✓</span>';
+        html += `</div></div>`;
+      }
+      
+      // VS ou Bye
+      if (match.bye) {
+        html += `<div class="bracket-history-vs">BYE</div>`;
+      } else if (photoB) {
+        html += `<div class="bracket-history-vs">VS</div>`;
+      }
+      
+      // Foto B
+      if (photoB) {
+        html += `<div class="bracket-history-slot ${photoBWon ? 'winner' : ''} ${photoAWon ? 'loser' : ''}">`;
+        html += `<img src="${photoB.thumb}" alt="Foto B" class="bracket-history-thumb">`;
+        html += `<div class="bracket-history-info">`;
+        html += `<div class="bracket-history-tier">`;
+        html += `<span class="tier-icon">${scoreB.tier.icon}</span>`;
+        html += `<span class="tier-score">${scoreB.score}/100</span>`;
+        html += `</div>`;
+        if (battle && photoBWon && battle.eloChange) {
+          const eloChange = battle.eloChange.winner || 0;
+          html += `<div class="bracket-history-change positive">+${eloChange} Elo</div>`;
+        }
+        if (photoBWon) html += '<span class="bracket-history-check">✓</span>';
+        html += `</div></div>`;
+      }
+      
+      html += `</div>`;
+    });
+    
+    html += `</div></div>`;
+  });
+  
+  html += '</div></div>';
+  return html;
+}
+
+/**
+ * Renderiza histórico de brackets a partir do battleHistory (fallback)
+ */
+function renderBracketHistoryFromBattles() {
+  if (!contestState || !contestState.battleHistory || contestState.battleHistory.length === 0) {
+    return '<p class="muted">Nenhum histórico de batalhas disponível.</p>';
+  }
+  
+  const { battleHistory, qualifiedPhotos, scoresAndTiers } = contestState;
+  
+  // Organizar batalhas por fase
+  const qualifyingBattles = battleHistory.filter(b => b.phase === 'qualifying');
+  const finalBattles = battleHistory.filter(b => b.phase === 'final');
+  
+  let html = '<div class="bracket-history-diagram">';
+  html += '<div class="bracket-history-scroll">';
+  
+  // Fase Classificatória
+  if (qualifyingBattles.length > 0) {
+    html += `<div class="bracket-history-column">`;
+    html += `<div class="bracket-history-column-label">Fase Classificatória</div>`;
+    html += `<div class="bracket-history-matches">`;
+    
+    qualifyingBattles.forEach((battle) => {
+      const photoA = qualifiedPhotos.find(p => p.id === battle.photoA);
+      const photoB = qualifiedPhotos.find(p => p.id === battle.photoB);
+      
+      if (!photoA || !photoB) return;
+      
+      const photoAWon = battle.winner === photoA.id;
+      
+      const scoreA = scoresAndTiers[photoA.id] || { score: 50, tier: TIERS[4] };
+      const scoreB = scoresAndTiers[photoB.id] || { score: 50, tier: TIERS[4] };
+      
+      html += `<div class="bracket-history-match completed">`;
+      html += `<div class="bracket-history-slot ${photoAWon ? 'winner' : 'loser'}">`;
+      html += `<img src="${photoA.thumb}" alt="Foto A" class="bracket-history-thumb">`;
+      html += `<div class="bracket-history-info">`;
+      html += `<div class="bracket-history-tier">`;
+      html += `<span class="tier-icon">${scoreA.tier.icon}</span>`;
+      html += `<span class="tier-score">${scoreA.score}/100</span>`;
+      html += `</div>`;
+      if (photoAWon && battle.eloChange) {
+        html += `<div class="bracket-history-change positive">+${battle.eloChange.winner || 0} Elo</div>`;
+      }
+      if (photoAWon) html += '<span class="bracket-history-check">✓</span>';
+      html += `</div></div>`;
+      
+      html += `<div class="bracket-history-vs">VS</div>`;
+      
+      html += `<div class="bracket-history-slot ${!photoAWon ? 'winner' : 'loser'}">`;
+      html += `<img src="${photoB.thumb}" alt="Foto B" class="bracket-history-thumb">`;
+      html += `<div class="bracket-history-info">`;
+      html += `<div class="bracket-history-tier">`;
+      html += `<span class="tier-icon">${scoreB.tier.icon}</span>`;
+      html += `<span class="tier-score">${scoreB.score}/100</span>`;
+      html += `</div>`;
+      if (!photoAWon && battle.eloChange) {
+        html += `<div class="bracket-history-change positive">+${battle.eloChange.winner || 0} Elo</div>`;
+      }
+      if (!photoAWon) html += '<span class="bracket-history-check">✓</span>';
+      html += `</div></div>`;
+      
+      html += `</div>`;
+    });
+    
+    html += `</div></div>`;
+  }
+  
+  // Fase Final
+  if (finalBattles.length > 0) {
+    html += `<div class="bracket-history-column">`;
+    html += `<div class="bracket-history-column-label">Fase Final</div>`;
+    html += `<div class="bracket-history-matches">`;
+    
+    finalBattles.forEach((battle) => {
+      const photoA = qualifiedPhotos.find(p => p.id === battle.photoA);
+      const photoB = qualifiedPhotos.find(p => p.id === battle.photoB);
+      
+      if (!photoA || !photoB) return;
+      
+      const photoAWon = battle.winner === photoA.id;
+      
+      const scoreA = scoresAndTiers[photoA.id] || { score: 50, tier: TIERS[4] };
+      const scoreB = scoresAndTiers[photoB.id] || { score: 50, tier: TIERS[4] };
+      
+      html += `<div class="bracket-history-match completed">`;
+      html += `<div class="bracket-history-slot ${photoAWon ? 'winner' : 'loser'}">`;
+      html += `<img src="${photoA.thumb}" alt="Foto A" class="bracket-history-thumb">`;
+      html += `<div class="bracket-history-info">`;
+      html += `<div class="bracket-history-tier">`;
+      html += `<span class="tier-icon">${scoreA.tier.icon}</span>`;
+      html += `<span class="tier-score">${scoreA.score}/100</span>`;
+      html += `</div>`;
+      if (photoAWon) html += '<span class="bracket-history-check">✓</span>';
+      html += `</div></div>`;
+      
+      html += `<div class="bracket-history-vs">VS</div>`;
+      
+      html += `<div class="bracket-history-slot ${!photoAWon ? 'winner' : 'loser'}">`;
+      html += `<img src="${photoB.thumb}" alt="Foto B" class="bracket-history-thumb">`;
+      html += `<div class="bracket-history-info">`;
+      html += `<div class="bracket-history-tier">`;
+      html += `<span class="tier-icon">${scoreB.tier.icon}</span>`;
+      html += `<span class="tier-score">${scoreB.score}/100</span>`;
+      html += `</div>`;
+      if (!photoAWon) html += '<span class="bracket-history-check">✓</span>';
+      html += `</div></div>`;
+      
+      html += `</div>`;
+    });
+    
+    html += `</div></div>`;
+  }
+  
+  html += '</div></div>';
+  return html;
 }
 
 /**
