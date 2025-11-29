@@ -2389,15 +2389,44 @@ async function renderQualifyingBattle() {
     ${renderBracketPreviewOverlay()}
   `;
   
-  // Event listeners
-  $('#battlePhotoA')?.addEventListener('click', () => chooseBattleWinner('A'));
-  $('#battlePhotoB')?.addEventListener('click', () => chooseBattleWinner('B'));
+  // Remover listener antigo se existir
+  if (battleKeysHandler) {
+    document.removeEventListener('keydown', battleKeysHandler);
+  }
+  
+  // Criar novo handler e adicionar
+  battleKeysHandler = handleBattleKeys;
+  document.addEventListener('keydown', battleKeysHandler);
+  
+  // Event listeners para cliques
+  const photoA = $('#battlePhotoA');
+  const photoB = $('#battlePhotoB');
+  
+  if (photoA) {
+    // Remover listeners antigos se existirem
+    photoA.replaceWith(photoA.cloneNode(true));
+    const newPhotoA = $('#battlePhotoA');
+    newPhotoA?.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      chooseBattleWinner('A');
+    });
+  }
+  
+  if (photoB) {
+    photoB.replaceWith(photoB.cloneNode(true));
+    const newPhotoB = $('#battlePhotoB');
+    newPhotoB?.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      chooseBattleWinner('B');
+    });
+  }
+  
   $('#cancelContest')?.addEventListener('click', confirmCancelContest);
   $('#toggleRankingView')?.addEventListener('click', () => toggleOverlay('rankingOverlay'));
   $('#toggleHeatmap')?.addEventListener('click', () => toggleOverlay('heatmapOverlay'));
   $('#toggleBracket')?.addEventListener('click', () => toggleOverlay('bracketPreviewOverlay'));
-  
-  document.addEventListener('keydown', handleBattleKeys);
 }
 
 /**
@@ -2463,13 +2492,41 @@ async function renderBracketBattle() {
     ${renderBracketTreeOverlay()}
   `;
   
-  // Event listeners
-  $('#battlePhotoA')?.addEventListener('click', () => chooseBattleWinner('A'));
-  $('#battlePhotoB')?.addEventListener('click', () => chooseBattleWinner('B'));
+  // Remover listener antigo se existir
+  if (battleKeysHandler) {
+    document.removeEventListener('keydown', battleKeysHandler);
+  }
+  
+  // Criar novo handler e adicionar
+  battleKeysHandler = handleBattleKeys;
+  document.addEventListener('keydown', battleKeysHandler);
+  
+  // Event listeners para cliques
+  const photoA = $('#battlePhotoA');
+  const photoB = $('#battlePhotoB');
+  
+  if (photoA) {
+    photoA.replaceWith(photoA.cloneNode(true));
+    const newPhotoA = $('#battlePhotoA');
+    newPhotoA?.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      chooseBattleWinner('A');
+    });
+  }
+  
+  if (photoB) {
+    photoB.replaceWith(photoB.cloneNode(true));
+    const newPhotoB = $('#battlePhotoB');
+    newPhotoB?.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      chooseBattleWinner('B');
+    });
+  }
+  
   $('#cancelContest')?.addEventListener('click', confirmCancelContest);
   $('#toggleBracket')?.addEventListener('click', () => toggleOverlay('bracketTreeOverlay'));
-  
-  document.addEventListener('keydown', handleBattleKeys);
 }
 
 /**
@@ -3000,11 +3057,19 @@ function renderBattleTimeline(photoId, battles, eloScores) {
   }).join('');
 }
 
+// Variável para rastrear se o listener de teclado já foi adicionado
+let battleKeysHandler = null;
+
 /**
  * Handler de atalhos de teclado na batalha
  */
 function handleBattleKeys(e) {
-  if (location.hash !== '#/contest' || !contestState || contestState.phase !== 'battle') {
+  if (location.hash !== '#/contest' || !contestState) {
+    return;
+  }
+  
+  // Verificar se está em fase de batalha (qualifying ou bracket)
+  if (contestState.phase !== 'qualifying' && contestState.phase !== 'bracket') {
     return;
   }
   
@@ -3015,18 +3080,21 @@ function handleBattleKeys(e) {
   // Teclas 1 ou ← → Foto A vence
   if (e.key === '1' || e.key === 'ArrowLeft') {
     e.preventDefault();
+    e.stopPropagation();
     chooseBattleWinner('A');
   }
   
   // Teclas 2 ou → → Foto B vence
   if (e.key === '2' || e.key === 'ArrowRight') {
     e.preventDefault();
+    e.stopPropagation();
     chooseBattleWinner('B');
   }
   
   // Esc → Cancelar contest
   if (e.key === 'Escape') {
     e.preventDefault();
+    e.stopPropagation();
     confirmCancelContest();
   }
 }
