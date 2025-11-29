@@ -2647,37 +2647,40 @@ async function renderQualifyingBattle() {
         </span>
       </div>
       
-      <!-- Container principal das imagens - ocupa toda largura -->
-      <div class="battle-container-full">
-        <!-- Foto A -->
-        <div class="battle-photo" id="battlePhotoA" tabindex="0" role="button" aria-label="Escolher Foto A (1 ou ←)">
-          <img src="${photoA.thumb}" alt="Foto A">
-          <div class="battle-label">1</div>
-          <div class="battle-info">
-            <div class="battle-rank">#${statsA.rank} | ${statsA.wins}W-${statsA.losses}L</div>
+      <!-- Grid principal: imagens + ranking -->
+      <div class="battle-grid-layout">
+        <!-- Container principal das imagens -->
+        <div class="battle-container-full">
+          <!-- Foto A -->
+          <div class="battle-photo" id="battlePhotoA" tabindex="0" role="button" aria-label="Escolher Foto A (1 ou ←)">
+            <img src="${photoA.thumb}" alt="Foto A">
+            <div class="battle-label">1</div>
+            <div class="battle-info">
+              <div class="battle-rank">#${statsA.rank} | ${statsA.wins}W-${statsA.losses}L</div>
+            </div>
+          </div>
+          
+          <!-- VS -->
+          <div class="battle-vs">
+            <span>VS</span>
+          </div>
+          
+          <!-- Foto B -->
+          <div class="battle-photo" id="battlePhotoB" tabindex="0" role="button" aria-label="Escolher Foto B (2 ou →)">
+            <img src="${photoB.thumb}" alt="Foto B">
+            <div class="battle-label">2</div>
+            <div class="battle-info">
+              <div class="battle-rank">#${statsB.rank} | ${statsB.wins}W-${statsB.losses}L</div>
+            </div>
           </div>
         </div>
         
-        <!-- VS -->
-        <div class="battle-vs">
-          <span>VS</span>
-        </div>
-        
-        <!-- Foto B -->
-        <div class="battle-photo" id="battlePhotoB" tabindex="0" role="button" aria-label="Escolher Foto B (2 ou →)">
-          <img src="${photoB.thumb}" alt="Foto B">
-          <div class="battle-label">2</div>
-          <div class="battle-info">
-            <div class="battle-rank">#${statsB.rank} | ${statsB.wins}W-${statsB.losses}L</div>
+        <!-- Ranking dinâmico - parte do grid -->
+        <div class="dynamic-ranking-sidebar">
+          <h4>Ranking</h4>
+          <div class="ranking-list">
+            ${renderDynamicRanking(qualifiedPhotos, photoStats)}
           </div>
-        </div>
-      </div>
-      
-      <!-- Ranking dinâmico - discreto no lado direito -->
-      <div class="dynamic-ranking-sidebar">
-        <h4>Ranking</h4>
-        <div class="ranking-list">
-          ${renderDynamicRanking(qualifiedPhotos, photoStats)}
         </div>
       </div>
       
@@ -2811,37 +2814,40 @@ async function renderFinalBattle() {
         </span>
       </div>
       
-      <!-- Container principal das imagens - ocupa toda largura -->
-      <div class="battle-container-full">
-        <!-- Foto A -->
-        <div class="battle-photo" id="battlePhotoA" tabindex="0" role="button" aria-label="Escolher Foto A (1 ou ←)">
-          <img src="${photoA.thumb}" alt="Foto A">
-          <div class="battle-label">1</div>
-          <div class="battle-info">
-            <div class="battle-rank">#${statsA.rank} | ${statsA.wins}W-${statsA.losses}L</div>
+      <!-- Grid principal: imagens + ranking -->
+      <div class="battle-grid-layout">
+        <!-- Container principal das imagens -->
+        <div class="battle-container-full">
+          <!-- Foto A -->
+          <div class="battle-photo" id="battlePhotoA" tabindex="0" role="button" aria-label="Escolher Foto A (1 ou ←)">
+            <img src="${photoA.thumb}" alt="Foto A">
+            <div class="battle-label">1</div>
+            <div class="battle-info">
+              <div class="battle-rank">#${statsA.rank} | ${statsA.wins}W-${statsA.losses}L</div>
+            </div>
+          </div>
+          
+          <!-- VS -->
+          <div class="battle-vs">
+            <span>VS</span>
+          </div>
+          
+          <!-- Foto B -->
+          <div class="battle-photo" id="battlePhotoB" tabindex="0" role="button" aria-label="Escolher Foto B (2 ou →)">
+            <img src="${photoB.thumb}" alt="Foto B">
+            <div class="battle-label">2</div>
+            <div class="battle-info">
+              <div class="battle-rank">#${statsB.rank} | ${statsB.wins}W-${statsB.losses}L</div>
+            </div>
           </div>
         </div>
         
-        <!-- VS -->
-        <div class="battle-vs">
-          <span>VS</span>
-        </div>
-        
-        <!-- Foto B -->
-        <div class="battle-photo" id="battlePhotoB" tabindex="0" role="button" aria-label="Escolher Foto B (2 ou →)">
-          <img src="${photoB.thumb}" alt="Foto B">
-          <div class="battle-label">2</div>
-          <div class="battle-info">
-            <div class="battle-rank">#${statsB.rank} | ${statsB.wins}W-${statsB.losses}L</div>
+        <!-- Ranking dinâmico - parte do grid -->
+        <div class="dynamic-ranking-sidebar">
+          <h4>Ranking Final</h4>
+          <div class="ranking-list">
+            ${renderDynamicRanking(finalPhotos, photoStats)}
           </div>
-        </div>
-      </div>
-      
-      <!-- Ranking dinâmico - discreto no lado direito -->
-      <div class="dynamic-ranking-sidebar">
-        <h4>Ranking Final</h4>
-        <div class="ranking-list">
-          ${renderDynamicRanking(finalPhotos, photoStats)}
         </div>
       </div>
       

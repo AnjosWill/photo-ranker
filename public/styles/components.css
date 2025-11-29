@@ -1111,8 +1111,16 @@ body.selection-mode .split-btn {
   max-width: 100%;
   margin: 0;
   padding: var(--gap-4);
-  padding-right: calc(140px + 8px); /* Largura do ranking sidebar (140px) + 8px de distância */
   position: relative;
+}
+
+/* Grid principal: imagens + ranking lado a lado */
+.battle-grid-layout {
+  display: grid;
+  grid-template-columns: 1fr 140px;
+  gap: 8px;
+  width: 100%;
+  align-items: start;
 }
 
 .contest-progress {
@@ -1360,24 +1368,20 @@ body.selection-mode .split-btn {
   flex-shrink: 0;
 }
 
-/* Ranking discreto no lado direito - grudado na borda */
+/* Ranking discreto no lado direito - parte do grid */
 .dynamic-ranking-sidebar {
-  position: fixed;
-  right: 0;
-  top: 50%;
-  transform: translateY(-50%);
+  position: sticky;
+  top: var(--gap-4);
   background: rgba(0, 0, 0, 0.85);
   backdrop-filter: blur(12px);
-  border-radius: 12px 0 0 12px;
+  border-radius: 12px;
   padding: var(--gap-1) var(--gap-1);
   border: 1px solid rgba(255, 255, 255, 0.1);
-  border-right: none;
-  max-height: 80vh;
+  max-height: 85vh;
   overflow-y: auto;
   overflow-x: hidden; /* Sem scroll lateral */
-  width: 140px; /* Largura reduzida */
-  z-index: 100;
-  box-shadow: -4px 0 16px rgba(0, 0, 0, 0.3);
+  width: 140px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
 }
 
 .dynamic-ranking h4 {
