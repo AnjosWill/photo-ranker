@@ -1178,10 +1178,11 @@ body.selection-mode .split-btn {
   border: 2px solid rgba(255, 255, 255, 0.3);
 }
 
-.battle-elo {
+.battle-info {
   position: absolute;
   bottom: 16px;
-  right: 16px;
+  left: 50%;
+  transform: translateX(-50%);
   background: rgba(0, 0, 0, 0.8);
   backdrop-filter: blur(8px);
   color: #fff;
@@ -1189,6 +1190,112 @@ body.selection-mode .split-btn {
   border-radius: 20px;
   font-size: 14px;
   font-weight: 600;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.battle-elo {
+  font-size: 16px;
+}
+
+.battle-rank {
+  font-size: 12px;
+  opacity: 0.8;
+}
+
+.battle-with-ranking {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: var(--gap-4);
+  max-width: 1600px;
+  margin: 0 auto;
+}
+
+.dynamic-ranking {
+  background: rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(12px);
+  border-radius: 16px;
+  padding: var(--gap-3);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  max-height: 600px;
+  overflow-y: auto;
+}
+
+.dynamic-ranking h4 {
+  margin: 0 0 var(--gap-2) 0;
+  color: var(--brand);
+  font-size: 18px;
+}
+
+.ranking-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-2);
+}
+
+.ranking-item {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-2);
+  padding: 8px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+  transition: all 0.2s ease;
+}
+
+.ranking-item:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.ranking-item.top-1 {
+  border: 2px solid #ffd700;
+  background: rgba(255, 215, 0, 0.1);
+}
+
+.ranking-item.top-2 {
+  border: 2px solid #c0c0c0;
+  background: rgba(192, 192, 192, 0.1);
+}
+
+.ranking-item.top-3 {
+  border: 2px solid #cd7f32;
+  background: rgba(205, 127, 50, 0.1);
+}
+
+.ranking-position {
+  font-weight: 700;
+  font-size: 18px;
+  color: var(--brand);
+  min-width: 40px;
+  text-align: center;
+}
+
+.ranking-thumb {
+  width: 50px;
+  height: 50px;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 2px solid rgba(255, 255, 255, 0.1);
+}
+
+.ranking-details {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ranking-elo {
+  font-size: 16px;
+  font-weight: 600;
+  color: #fff;
+}
+
+.ranking-record {
+  font-size: 12px;
+  color: var(--muted);
 }
 
 .battle-vs {
