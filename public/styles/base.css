@@ -68,6 +68,18 @@ body {
   padding: var(--gap-3);
 }
 
+/* Tela de Contest: ocupar todo espaço disponível */
+.app-main [data-route="contest"] {
+  margin: 0 calc(-1 * var(--gap-3)); /* Compensar padding do app-main */
+  padding: 0;
+  max-width: none;
+  width: calc(100% + 2 * var(--gap-3));
+}
+
+.app-main [data-route="contest"] .contest-view {
+  padding: var(--gap-4);
+}
+
 /* Navegação (tabs) */
 .tabs {
   display: flex;
