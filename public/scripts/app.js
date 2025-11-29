@@ -2357,11 +2357,16 @@ function renderBracket() {
       // Container único para cada batalha
       html += `<div class="bracket-battle-container ${isCurrentBattle ? 'current' : ''} decided ${round.type}" data-battle-id="${battle.photoA}-${battle.photoB}">`;
       
+      // Obter scores e tiers
+      const scoreA = contestState.scoresAndTiers[photoA.id] || { score: 50, tier: TIERS[4] };
+      const scoreB = contestState.scoresAndTiers[photoB.id] || { score: 50, tier: TIERS[4] };
+      
       // Slot Foto A
       html += `<div class="bracket-slot ${photoAWon ? 'winner' : 'loser'}">`;
       html += `<img src="${photoA.thumb}" alt="Foto A" class="bracket-thumb">`;
       html += `<div class="bracket-info">`;
-      html += `<div class="bracket-elo">${Math.round(eloScores[photoA.id] || 1500)}</div>`;
+      html += `<div class="bracket-score">${scoreA.score}/100 ${scoreA.tier.icon}</div>`;
+      html += `<div class="bracket-tier">${scoreA.tier.label}</div>`;
       if (photoAWon) html += '<span class="bracket-check">✓</span>';
       html += `</div></div>`;
       
@@ -2372,7 +2377,8 @@ function renderBracket() {
       html += `<div class="bracket-slot ${photoBWon ? 'winner' : 'loser'}">`;
       html += `<img src="${photoB.thumb}" alt="Foto B" class="bracket-thumb">`;
       html += `<div class="bracket-info">`;
-      html += `<div class="bracket-elo">${Math.round(eloScores[photoB.id] || 1500)}</div>`;
+      html += `<div class="bracket-score">${scoreB.score}/100 ${scoreB.tier.icon}</div>`;
+      html += `<div class="bracket-tier">${scoreB.tier.label}</div>`;
       if (photoBWon) html += '<span class="bracket-check">✓</span>';
       html += `</div></div>`;
       
@@ -2852,11 +2858,21 @@ function renderRankingOverlay() {
 function renderBracketPreview() {
   if (!contestState || contestState.phase !== 'qualifying') return '';
   
-  const { qualifiedPhotos, eloScores } = contestState;
+  const { qualifiedPhotos, scoresAndTiers } = contestState;
   const ranked = [...qualifiedPhotos]
-    .sort((a, b) => (eloScores[b.id] || 1500) - (eloScores[a.id] || 1500));
+    .map(p => ({
+      ...p,
+      scoreData: scoresAndTiers[p.id] || { score: 50, tier: TIERS[4] }
+    }))
+    .sort((a, b) => {
+      // Ordenar por score (maior → menor)
+      if (b.scoreData.score !== a.scoreData.score) {
+        return b.scoreData.score - a.scoreData.score;
+      }
+      return a.id.localeCompare(b.id);
+    });
   
-  // Top 16 (ou potência de 2 mais próxima)
+  // Top K (potência de 2)
   const bracketSize = Math.min(16, Math.pow(2, Math.floor(Math.log2(ranked.length))));
   const seeds = ranked.slice(0, bracketSize);
   
@@ -2864,7 +2880,7 @@ function renderBracketPreview() {
   const bracket = generateBracketFromSeeds(seeds);
   
   let html = '<div class="bracket-preview">';
-  html += `<div class="preview-info">Top ${bracketSize} do ranking atual avançam para o Bracket Final</div>`;
+  html += `<div class="preview-info">Top ${bracketSize} do ranking atual (por score) avançam para o Bracket Final</div>`;
   html += '<div class="bracket-preview-diagram">';
   
   bracket.rounds.forEach((round, roundIdx) => {
@@ -2873,12 +2889,23 @@ function renderBracketPreview() {
     html += `<div class="preview-matches">`;
     
     round.matches.forEach(match => {
+      const seedA = seeds.findIndex(s => s.id === match.photoA.id) + 1;
+      const seedB = seeds.findIndex(s => s.id === match.photoB.id) + 1;
+      const scoreA = scoresAndTiers[match.photoA.id] || { score: 50, tier: TIERS[4] };
+      const scoreB = scoresAndTiers[match.photoB.id] || { score: 50, tier: TIERS[4] };
+      
       html += `<div class="preview-match">`;
-      html += `<div class="preview-seed">#${seeds.findIndex(s => s.id === match.photoA.id) + 1}</div>`;
+      html += `<div class="preview-seed-info">`;
+      html += `<div class="preview-seed">#${seedA}</div>`;
+      html += `<div class="preview-score">${scoreA.score}/100 ${scoreA.tier.icon}</div>`;
+      html += `</div>`;
       html += `<img src="${match.photoA.thumb}" class="preview-thumb">`;
       html += `<span class="preview-vs">VS</span>`;
       html += `<img src="${match.photoB.thumb}" class="preview-thumb">`;
-      html += `<div class="preview-seed">#${seeds.findIndex(s => s.id === match.photoB.id) + 1}</div>`;
+      html += `<div class="preview-seed-info">`;
+      html += `<div class="preview-seed">#${seedB}</div>`;
+      html += `<div class="preview-score">${scoreB.score}/100 ${scoreB.tier.icon}</div>`;
+      html += `</div>`;
       html += `</div>`;
     });
     
@@ -3556,7 +3583,14 @@ async function handleQualifyingBattle(winner) {
       console.warn('[DEBUG] winnerElement não encontrado');
     }
     
-    toast(`Foto ${winner} venceu! ${result.change.winner > 0 ? '+' : ''}${result.change.winner} Elo`);
+    // Calcular variação de score para toast
+    const winnerScoreBefore = contestState.scoresAndTiers[winnerId]?.score || 50;
+    // Atualizar scores/tiers se não estiver congelado (já foi feito acima)
+    const winnerScoreAfter = contestState.scoresAndTiers[winnerId]?.score || 50;
+    const scoreChange = winnerScoreAfter - winnerScoreBefore;
+    const tierAfter = contestState.scoresAndTiers[winnerId]?.tier || TIERS[4];
+    
+    toast(`Foto ${winner} venceu! ${scoreChange > 0 ? '+' : ''}${Math.round(scoreChange)} score (${winnerScoreAfter}/100 ${tierAfter.icon})`);
     
     // Avançar para próxima batalha
     contestState.qualifying.completedBattles++;
