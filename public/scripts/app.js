@@ -37,16 +37,34 @@ let rateViewIndex = 0; // Índice atual na aba "Avaliar"
 let rateViewPhotos = []; // Lista de fotos para avaliar (filtrada)
 let rateViewOnlyUnrated = false; // Filtro "apenas não avaliadas"
 
-// Sprint 4: Estado do Contest (Ranking Dinâmico)
+// Sprint 4: Estado do Contest (Sistema Completo: Classificatória + Bracket)
 let contestState = null; 
 // {
-//   phase: 'battle' | 'finished',
+//   phase: 'qualifying' | 'bracket' | 'finished',
 //   qualifiedPhotos: Photo[],
-//   pendingMatches: [{photoA, photoB}],  // Confrontos pendentes (fila)
-//   currentMatch: {photoA, photoB} | null,
+//   
+//   // Fase Classificatória
+//   qualifying: {
+//     totalBattles: number,        // Total de batalhas planejadas
+//     completedBattles: number,    // Batalhas realizadas
+//     battlesPerPhoto: number,     // Batalhas por foto (ex: 5)
+//     currentMatch: {photoA, photoB} | null,
+//     pendingMatches: [{photoA, photoB}],
+//     eloHistory: { photoId: [{elo, timestamp, battleId}] }  // Histórico de Elo por foto
+//   },
+//   
+//   // Fase Bracket
+//   bracket: {
+//     seeds: Photo[],              // Top N do ranking (ordenado)
+//     rounds: [{round: number, matches: [{photoA, photoB, winner?, votesA?, votesB?}]}],
+//     currentRound: number,
+//     currentMatchIndex: number
+//   },
+//   
+//   // Estado Global
 //   eloScores: { photoId: rating },
-//   battleHistory: [{ photoA, photoB, winner, timestamp, eloChange }],
-//   photoStats: { photoId: {wins, losses, elo} }  // Estatísticas por foto
+//   battleHistory: [{ photoA, photoB, winner, timestamp, eloChange, phase, votesA?, votesB? }],
+//   photoStats: { photoId: {wins, losses, elo, rank} }
 // }
 
 // Opções de ordenação
@@ -1864,7 +1882,79 @@ function calculatePhotoStats(photos, eloScores, battleHistory) {
 }
 
 /**
- * Inicia um novo contest (sistema de ranking dinâmico)
+ * Calcula número de batalhas por foto na fase classificatória
+ * @param {number} totalPhotos - Total de fotos
+ * @returns {number} Batalhas por foto
+ */
+function calculateBattlesPerPhoto(totalPhotos) {
+  // Fórmula: garantir que cada foto batalhe o suficiente para ranking confiável
+  // Mínimo 3, máximo 8 batalhas por foto
+  if (totalPhotos <= 4) return Math.min(3, totalPhotos - 1);
+  if (totalPhotos <= 8) return 4;
+  if (totalPhotos <= 16) return 5;
+  return 6; // Para 17+ fotos
+}
+
+/**
+ * Gera batalhas da fase classificatória (número controlado)
+ * @param {Array} photos - Fotos participantes
+ * @param {number} battlesPerPhoto - Batalhas por foto
+ * @param {Object} eloScores - Scores Elo atuais
+ * @param {Array} battleHistory - Histórico de batalhas
+ * @returns {Array} [{photoA, photoB}, ...] Confrontos planejados
+ */
+function generateQualifyingBattles(photos, battlesPerPhoto, eloScores, battleHistory) {
+  const matches = [];
+  const photoBattleCount = {}; // Contador de batalhas por foto
+  photos.forEach(p => photoBattleCount[p.id] = 0);
+  
+  // Ordenar por Elo para parear de forma balanceada
+  const ranked = [...photos].sort((a, b) => 
+    (eloScores[b.id] || 1500) - (eloScores[a.id] || 1500)
+  );
+  
+  // Gerar batalhas até cada foto ter battlesPerPhoto batalhas
+  let attempts = 0;
+  const maxAttempts = photos.length * battlesPerPhoto * 2;
+  
+  while (attempts < maxAttempts) {
+    // Encontrar foto que precisa de mais batalhas
+    const needsBattles = ranked.filter(p => 
+      photoBattleCount[p.id] < battlesPerPhoto
+    );
+    
+    if (needsBattles.length < 2) break;
+    
+    // Parear com foto próxima no ranking que também precisa batalhar
+    for (let i = 0; i < needsBattles.length - 1; i++) {
+      const photoA = needsBattles[i];
+      const photoB = needsBattles[i + 1];
+      
+      // Verificar se já batalharam
+      const pairKey = [photoA.id, photoB.id].sort().join('-');
+      const alreadyFaced = battleHistory.some(b => {
+        const battleKey = [b.photoA, b.photoB].sort().join('-');
+        return battleKey === pairKey;
+      });
+      
+      if (!alreadyFaced && 
+          photoBattleCount[photoA.id] < battlesPerPhoto &&
+          photoBattleCount[photoB.id] < battlesPerPhoto) {
+        matches.push({ photoA, photoB });
+        photoBattleCount[photoA.id]++;
+        photoBattleCount[photoB.id]++;
+        break;
+      }
+    }
+    
+    attempts++;
+  }
+  
+  return matches;
+}
+
+/**
+ * Inicia um novo contest (Sistema Completo: Classificatória + Bracket)
  */
 async function startContest() {
   const allPhotos = await getAllPhotos();
@@ -1876,30 +1966,51 @@ async function startContest() {
     return;
   }
   
-  // Inicializar scores Elo
+  // Inicializar scores Elo (todos começam iguais)
   const eloScores = initializeEloScores(qualifiedPhotos);
   
-  // Gerar primeiro confronto baseado no ranking inicial
-  const firstMatch = generateNextMatch(qualifiedPhotos, eloScores, []);
+  // Calcular batalhas por foto
+  const battlesPerPhoto = calculateBattlesPerPhoto(qualifiedPhotos.length);
+  const totalBattles = Math.ceil((qualifiedPhotos.length * battlesPerPhoto) / 2);
   
-  if (!firstMatch) {
-    toast('Erro ao gerar confrontos');
-    return;
-  }
+  // Gerar batalhas da fase classificatória
+  const qualifyingMatches = generateQualifyingBattles(
+    qualifiedPhotos, 
+    battlesPerPhoto, 
+    eloScores, 
+    []
+  );
+  
+  // Inicializar histórico de Elo por foto
+  const eloHistory = {};
+  qualifiedPhotos.forEach(p => {
+    eloHistory[p.id] = [{ elo: 1500, timestamp: Date.now(), battleId: null }];
+  });
   
   contestState = {
-    phase: 'battle',
+    phase: 'qualifying',
     qualifiedPhotos: qualifiedPhotos,
-    pendingMatches: [], // Será preenchido dinamicamente
-    currentMatch: firstMatch,
+    
+    qualifying: {
+      totalBattles: totalBattles,
+      completedBattles: 0,
+      battlesPerPhoto: battlesPerPhoto,
+      currentMatch: qualifyingMatches[0] || null,
+      pendingMatches: qualifyingMatches.slice(1),
+      eloHistory: eloHistory
+    },
+    
+    bracket: null, // Será preenchido ao finalizar classificatória
+    
     eloScores: eloScores,
-    battleHistory: []
+    battleHistory: [],
+    photoStats: {}
   };
   
   saveContestState();
   renderBattle();
   
-  toast(`Contest iniciado! ${qualifiedPhotos.length} participantes. Sistema de ranking dinâmico ativado.`);
+  toast(`Contest iniciado! ${qualifiedPhotos.length} participantes. Fase Classificatória: ${battlesPerPhoto} batalhas por foto (${totalBattles} total).`);
 }
 
 /**
@@ -2156,57 +2267,71 @@ function renderBracket() {
 }
 
 /**
- * Renderiza interface de confronto
+ * Renderiza interface de confronto (suporta qualifying e bracket)
  */
 async function renderBattle() {
   const container = $('#contestView');
   if (!container || !contestState) return;
   
-  const { currentMatch, eloScores, battleHistory, qualifiedPhotos } = contestState;
-  
   // Verificar se contest terminou
-  if (!currentMatch || contestState.phase === 'finished') {
+  if (contestState.phase === 'finished') {
     finishContest();
+    return;
+  }
+  
+  if (contestState.phase === 'qualifying') {
+    await renderQualifyingBattle();
+  } else if (contestState.phase === 'bracket') {
+    await renderBracketBattle();
+  }
+}
+
+/**
+ * Renderiza batalha da fase classificatória
+ */
+async function renderQualifyingBattle() {
+  const container = $('#contestView');
+  const { qualifying, eloScores, battleHistory, qualifiedPhotos } = contestState;
+  const { currentMatch } = qualifying;
+  
+  if (!currentMatch) {
+    // Sem mais batalhas - finalizar classificatória
+    await finishQualifyingAndStartBracket();
     return;
   }
   
   const photoA = currentMatch.photoA;
   const photoB = currentMatch.photoB;
   
-  // Verificar se essas fotos já batalharam antes
+  // Verificar se já batalharam
   const previousWinner = getPreviousWinner(photoA.id, photoB.id, battleHistory);
   
   if (previousWinner) {
-    // Já batalharam! Usar vencedora anterior automaticamente
-    toast(`⚡ Confronto automático: ${previousWinner === 'A' ? 'Foto A' : 'Foto B'} já venceu antes! (sem nova comparação)`);
-    
-    // Aguardar um pouco para o usuário ver o toast
+    toast(`⚡ Confronto automático: ${previousWinner === 'A' ? 'Foto A' : 'Foto B'} já venceu antes!`);
     await new Promise(resolve => setTimeout(resolve, 1200));
-    
-    // Registrar vitória automática (Elo ainda é recalculado, mas vitória é automática)
     await chooseBattleWinner(previousWinner);
-    return; // chooseBattleWinner já chama renderBattle() novamente
+    return;
   }
   
-  // Calcular estatísticas e ranking
+  // Calcular estatísticas
   const photoStats = calculatePhotoStats(qualifiedPhotos, eloScores, battleHistory);
   const statsA = photoStats[photoA.id];
   const statsB = photoStats[photoB.id];
   const eloA = eloScores[photoA.id] || 1500;
   const eloB = eloScores[photoB.id] || 1500;
   
-  // Contar batalhas totais
-  const totalBattles = battleHistory.length;
-  const totalPossible = (qualifiedPhotos.length * (qualifiedPhotos.length - 1)) / 2;
+  const progress = Math.round((qualifying.completedBattles / qualifying.totalBattles) * 100);
   
   container.innerHTML = `
     <div class="contest-battle">
       <div class="contest-progress">
-        <strong>Ranking Dinâmico</strong><br>
-        Batalha <span class="current">${totalBattles + 1}</span> de ${totalPossible} possíveis
+        <strong>Fase Classificatória</strong><br>
+        Batalha <span class="current">${qualifying.completedBattles + 1}</span> de ${qualifying.totalBattles} 
+        <span class="progress-bar-mini">
+          <span class="progress-fill" style="width: ${progress}%"></span>
+        </span>
       </div>
       
-      <!-- Ranking ao lado -->
       <div class="battle-with-ranking">
         <div class="battle-container">
           <!-- Foto A -->
@@ -2214,7 +2339,7 @@ async function renderBattle() {
             <img src="${photoA.thumb}" alt="Foto A">
             <div class="battle-label">1</div>
             <div class="battle-info">
-              <div class="battle-elo">Elo: ${Math.round(eloA)}</div>
+              <div class="battle-elo">Power: ${Math.round(eloA)}</div>
               <div class="battle-rank">#${statsA.rank} | ${statsA.wins}W-${statsA.losses}L</div>
             </div>
           </div>
@@ -2229,7 +2354,7 @@ async function renderBattle() {
             <img src="${photoB.thumb}" alt="Foto B">
             <div class="battle-label">2</div>
             <div class="battle-info">
-              <div class="battle-elo">Elo: ${Math.round(eloB)}</div>
+              <div class="battle-elo">Power: ${Math.round(eloB)}</div>
               <div class="battle-rank">#${statsB.rank} | ${statsB.wins}W-${statsB.losses}L</div>
             </div>
           </div>
@@ -2237,7 +2362,7 @@ async function renderBattle() {
         
         <!-- Ranking dinâmico -->
         <div class="dynamic-ranking">
-          <h4>Ranking Atual</h4>
+          <h4>Ranking</h4>
           <div class="ranking-list">
             ${renderDynamicRanking(qualifiedPhotos, photoStats)}
           </div>
@@ -2245,33 +2370,100 @@ async function renderBattle() {
       </div>
       
       <div class="battle-actions">
-        <button class="btn btn-secondary" id="toggleBracket" data-tooltip="Mostrar/Ocultar Chaves">
-          📊 Chaves
+        <button class="btn btn-secondary" id="toggleRankingView" data-tooltip="Ver Ranking Completo">
+          📊 Ranking
+        </button>
+        <button class="btn btn-secondary" id="toggleBracket" data-tooltip="Prévia do Bracket">
+          🏆 Prévia Bracket
         </button>
         <button class="btn btn-secondary" id="cancelContest">Cancelar Contest</button>
       </div>
     </div>
     
-    <!-- Bracket Visual (Overlay/Toggle) -->
-    <div class="contest-bracket-overlay" id="contestBracketOverlay" aria-hidden="true">
-      <div class="bracket-overlay-header">
-        <h3>Evolução das Batalhas</h3>
-        <button class="bracket-close" id="closeBracket" aria-label="Fechar chaves">&times;</button>
-      </div>
-      <div class="bracket-diagram-container" id="contestBracket">
-        ${renderBracket()}
-      </div>
-    </div>
+    <!-- Overlays -->
+    ${renderRankingOverlay()}
+    ${renderBracketPreviewOverlay()}
   `;
   
   // Event listeners
   $('#battlePhotoA')?.addEventListener('click', () => chooseBattleWinner('A'));
   $('#battlePhotoB')?.addEventListener('click', () => chooseBattleWinner('B'));
   $('#cancelContest')?.addEventListener('click', confirmCancelContest);
-  $('#toggleBracket')?.addEventListener('click', toggleBracket);
-  $('#closeBracket')?.addEventListener('click', toggleBracket);
+  $('#toggleRankingView')?.addEventListener('click', () => toggleOverlay('rankingOverlay'));
+  $('#toggleBracket')?.addEventListener('click', () => toggleOverlay('bracketPreviewOverlay'));
   
-  // Atalhos de teclado
+  document.addEventListener('keydown', handleBattleKeys);
+}
+
+/**
+ * Renderiza batalha da fase bracket
+ */
+async function renderBracketBattle() {
+  const container = $('#contestView');
+  const { bracket, eloScores, qualifiedPhotos } = contestState;
+  const currentRound = bracket.rounds[bracket.currentRound - 1];
+  const currentMatch = currentRound.matches[bracket.currentMatchIndex];
+  
+  if (!currentMatch) {
+    finishContest();
+    return;
+  }
+  
+  const photoA = currentMatch.photoA;
+  const photoB = currentMatch.photoB;
+  const eloA = eloScores[photoA.id] || 1500;
+  const eloB = eloScores[photoB.id] || 1500;
+  
+  container.innerHTML = `
+    <div class="contest-battle">
+      <div class="contest-progress">
+        <strong>Bracket Final - Rodada ${bracket.currentRound}</strong><br>
+        Confronto <span class="current">${bracket.currentMatchIndex + 1}</span> de ${currentRound.matches.length}
+      </div>
+      
+      <div class="battle-container">
+        <!-- Foto A -->
+        <div class="battle-photo" id="battlePhotoA" tabindex="0" role="button" aria-label="Escolher Foto A (1 ou ←)">
+          <img src="${photoA.thumb}" alt="Foto A">
+          <div class="battle-label">1</div>
+          <div class="battle-info">
+            <div class="battle-elo">Power: ${Math.round(eloA)}</div>
+          </div>
+        </div>
+        
+        <!-- VS -->
+        <div class="battle-vs">
+          <span>VS</span>
+        </div>
+        
+        <!-- Foto B -->
+        <div class="battle-photo" id="battlePhotoB" tabindex="0" role="button" aria-label="Escolher Foto B (2 ou →)">
+          <img src="${photoB.thumb}" alt="Foto B">
+          <div class="battle-label">2</div>
+          <div class="battle-info">
+            <div class="battle-elo">Power: ${Math.round(eloB)}</div>
+          </div>
+        </div>
+      </div>
+      
+      <div class="battle-actions">
+        <button class="btn btn-secondary" id="toggleBracket" data-tooltip="Ver Bracket Completo">
+          🏆 Bracket
+        </button>
+        <button class="btn btn-secondary" id="cancelContest">Cancelar Contest</button>
+      </div>
+    </div>
+    
+    <!-- Bracket Tree Overlay -->
+    ${renderBracketTreeOverlay()}
+  `;
+  
+  // Event listeners
+  $('#battlePhotoA')?.addEventListener('click', () => chooseBattleWinner('A'));
+  $('#battlePhotoB')?.addEventListener('click', () => chooseBattleWinner('B'));
+  $('#cancelContest')?.addEventListener('click', confirmCancelContest);
+  $('#toggleBracket')?.addEventListener('click', () => toggleOverlay('bracketTreeOverlay'));
+  
   document.addEventListener('keydown', handleBattleKeys);
 }
 
@@ -2299,22 +2491,406 @@ function renderDynamicRanking(photos, photoStats) {
 }
 
 /**
- * Toggle bracket overlay
+ * Toggle overlay genérico
  */
-function toggleBracket() {
-  const overlay = $('#contestBracketOverlay');
+function toggleOverlay(overlayId) {
+  const overlay = $(overlayId);
   if (!overlay) return;
   
   const isHidden = overlay.getAttribute('aria-hidden') === 'true';
   overlay.setAttribute('aria-hidden', isHidden ? 'false' : 'true');
   
-  if (!isHidden) {
-    // Atualizar bracket ao abrir
-    const bracketContainer = $('#contestBracket');
-    if (bracketContainer) {
-      bracketContainer.innerHTML = renderBracket();
+  if (!isHidden && overlayId === 'bracketPreviewOverlay') {
+    // Atualizar prévia do bracket
+    const container = $('#bracketPreviewContent');
+    if (container) {
+      container.innerHTML = renderBracketPreview();
+    }
+  } else if (!isHidden && overlayId === 'bracketTreeOverlay') {
+    // Atualizar árvore do bracket
+    const container = $('#bracketTreeContent');
+    if (container) {
+      container.innerHTML = renderBracketTree();
     }
   }
+}
+
+/**
+ * Renderiza overlay de ranking completo
+ */
+function renderRankingOverlay() {
+  if (!contestState || contestState.phase !== 'qualifying') return '';
+  
+  const { qualifiedPhotos, eloScores, battleHistory } = contestState;
+  const photoStats = calculatePhotoStats(qualifiedPhotos, eloScores, battleHistory);
+  const ranked = [...qualifiedPhotos]
+    .map(p => ({ ...p, stats: photoStats[p.id] }))
+    .sort((a, b) => b.stats.elo - a.stats.elo);
+  
+  return `
+    <div class="contest-overlay" id="rankingOverlay" aria-hidden="true">
+      <div class="overlay-header">
+        <h3>Ranking Completo</h3>
+        <button class="overlay-close" onclick="toggleOverlay('rankingOverlay')" aria-label="Fechar">&times;</button>
+      </div>
+      <div class="overlay-content">
+        <div class="full-ranking-list">
+          ${ranked.map((photo, idx) => `
+            <div class="full-ranking-item ${idx < 3 ? 'top-' + (idx + 1) : ''}" data-photo-id="${photo.id}">
+              <span class="ranking-position-large">#${idx + 1}</span>
+              <img src="${photo.thumb}" alt="Foto" class="ranking-thumb-large">
+              <div class="ranking-details-large">
+                <div class="ranking-power">Power Level: ${Math.round(photo.stats.elo)}</div>
+                <div class="ranking-record-large">${photo.stats.wins}W - ${photo.stats.losses}L</div>
+              </div>
+              <button class="btn-view-details" data-photo-id="${photo.id}" onclick="showPhotoDetails('${photo.id}')">
+                Ver Detalhes
+              </button>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+/**
+ * Renderiza prévia do bracket (antes de fechar classificatória)
+ */
+function renderBracketPreview() {
+  if (!contestState || contestState.phase !== 'qualifying') return '';
+  
+  const { qualifiedPhotos, eloScores } = contestState;
+  const ranked = [...qualifiedPhotos]
+    .sort((a, b) => (eloScores[b.id] || 1500) - (eloScores[a.id] || 1500));
+  
+  // Top 16 (ou potência de 2 mais próxima)
+  const bracketSize = Math.min(16, Math.pow(2, Math.floor(Math.log2(ranked.length))));
+  const seeds = ranked.slice(0, bracketSize);
+  
+  // Gerar preview do bracket
+  const bracket = generateBracketFromSeeds(seeds);
+  
+  let html = '<div class="bracket-preview">';
+  html += `<div class="preview-info">Top ${bracketSize} do ranking atual avançam para o Bracket Final</div>`;
+  html += '<div class="bracket-preview-diagram">';
+  
+  bracket.rounds.forEach((round, roundIdx) => {
+    html += `<div class="preview-round">`;
+    html += `<div class="preview-round-label">Rodada ${round.round}</div>`;
+    html += `<div class="preview-matches">`;
+    
+    round.matches.forEach(match => {
+      html += `<div class="preview-match">`;
+      html += `<div class="preview-seed">#${seeds.findIndex(s => s.id === match.photoA.id) + 1}</div>`;
+      html += `<img src="${match.photoA.thumb}" class="preview-thumb">`;
+      html += `<span class="preview-vs">VS</span>`;
+      html += `<img src="${match.photoB.thumb}" class="preview-thumb">`;
+      html += `<div class="preview-seed">#${seeds.findIndex(s => s.id === match.photoB.id) + 1}</div>`;
+      html += `</div>`;
+    });
+    
+    html += `</div></div>`;
+  });
+  
+  html += '</div></div>';
+  return html;
+}
+
+/**
+ * Renderiza overlay de prévia do bracket
+ */
+function renderBracketPreviewOverlay() {
+  if (!contestState || contestState.phase !== 'qualifying') return '';
+  
+  return `
+    <div class="contest-overlay" id="bracketPreviewOverlay" aria-hidden="true">
+      <div class="overlay-header">
+        <h3>Prévia do Bracket Final</h3>
+        <button class="overlay-close" onclick="toggleOverlay('bracketPreviewOverlay')" aria-label="Fechar">&times;</button>
+      </div>
+      <div class="overlay-content" id="bracketPreviewContent">
+        ${renderBracketPreview()}
+      </div>
+    </div>
+  `;
+}
+
+/**
+ * Renderiza árvore visual do bracket (fase bracket)
+ */
+function renderBracketTree() {
+  if (!contestState || !contestState.bracket) return '';
+  
+  const { bracket, eloScores, battleHistory } = contestState;
+  const { rounds, seeds } = bracket;
+  
+  let html = '<div class="bracket-tree">';
+  
+  rounds.forEach((round, roundIdx) => {
+    const isCurrentRound = roundIdx === bracket.currentRound - 1;
+    
+    html += `<div class="tree-column ${isCurrentRound ? 'active' : ''}" data-round="${round.round}">`;
+    html += `<div class="tree-column-label">Rodada ${round.round}</div>`;
+    html += `<div class="tree-matches">`;
+    
+    round.matches.forEach((match, matchIdx) => {
+      const isCurrentMatch = isCurrentRound && matchIdx === bracket.currentMatchIndex;
+      const photoA = match.photoA;
+      const photoB = match.photoB;
+      const eloA = eloScores[photoA.id] || 1500;
+      const eloB = eloScores[photoB.id] || 1500;
+      
+      // Buscar resultado se já foi decidido
+      const battle = battleHistory.find(b => 
+        b.phase === 'bracket' &&
+        ((b.photoA === photoA.id && b.photoB === photoB.id) ||
+         (b.photoA === photoB.id && b.photoB === photoA.id))
+      );
+      
+      const winnerId = battle ? battle.winner : null;
+      const photoAWon = winnerId === photoA.id;
+      const photoBWon = winnerId === photoB.id;
+      const totalVotes = (battle?.votesA || 0) + (battle?.votesB || 0);
+      const votesA = battle?.votesA || 0;
+      const votesB = battle?.votesB || 0;
+      const votePercentA = totalVotes > 0 ? Math.round((votesA / totalVotes) * 100) : 0;
+      const votePercentB = totalVotes > 0 ? Math.round((votesB / totalVotes) * 100) : 0;
+      
+      html += `<div class="tree-match ${isCurrentMatch ? 'current' : ''} ${battle ? 'decided' : ''}" 
+                data-match-id="${photoA.id}-${photoB.id}">`;
+      
+      // Foto A
+      html += `<div class="tree-slot ${photoAWon ? 'winner' : ''} ${photoBWon ? 'loser' : ''}">`;
+      html += `<img src="${photoA.thumb}" alt="Foto A" class="tree-thumb">`;
+      html += `<div class="tree-info">`;
+      html += `<div class="tree-power">${Math.round(eloA)}</div>`;
+      if (battle) {
+        html += `<div class="tree-votes">${votePercentA}% (${votesA} votos)</div>`;
+        if (battle.eloChange) {
+          const changeA = photoAWon ? battle.eloChange.winner : battle.eloChange.loser;
+          html += `<div class="tree-elo-change ${changeA > 0 ? 'positive' : 'negative'}">${changeA > 0 ? '+' : ''}${changeA}</div>`;
+        }
+      }
+      if (photoAWon) html += '<span class="tree-check">✓</span>';
+      html += `</div></div>`;
+      
+      html += `<div class="tree-line-h"></div>`;
+      
+      // Foto B
+      html += `<div class="tree-slot ${photoBWon ? 'winner' : ''} ${photoAWon ? 'loser' : ''}">`;
+      html += `<img src="${photoB.thumb}" alt="Foto B" class="tree-thumb">`;
+      html += `<div class="tree-info">`;
+      html += `<div class="tree-power">${Math.round(eloB)}</div>`;
+      if (battle) {
+        html += `<div class="tree-votes">${votePercentB}% (${votesB} votos)</div>`;
+        if (battle.eloChange) {
+          const changeB = photoBWon ? battle.eloChange.winner : battle.eloChange.loser;
+          html += `<div class="tree-elo-change ${changeB > 0 ? 'positive' : 'negative'}">${changeB > 0 ? '+' : ''}${changeB}</div>`;
+        }
+      }
+      if (photoBWon) html += '<span class="tree-check">✓</span>';
+      html += `</div></div>`;
+      
+      // Linha conectora para próxima rodada (se vencedor)
+      if (battle && roundIdx < rounds.length - 1) {
+        const winner = photoAWon ? photoA : photoB;
+        html += `<div class="tree-connector" data-winner="${winner.id}"></div>`;
+      }
+      
+      html += `</div>`;
+    });
+    
+    html += `</div></div>`;
+  });
+  
+  html += '</div>';
+  return html;
+}
+
+/**
+ * Renderiza overlay da árvore do bracket
+ */
+function renderBracketTreeOverlay() {
+  if (!contestState || contestState.phase !== 'bracket') return '';
+  
+  return `
+    <div class="contest-overlay" id="bracketTreeOverlay" aria-hidden="true">
+      <div class="overlay-header">
+        <h3>Bracket Final - Árvore Completa</h3>
+        <button class="overlay-close" onclick="toggleOverlay('bracketTreeOverlay')" aria-label="Fechar">&times;</button>
+      </div>
+      <div class="overlay-content" id="bracketTreeContent">
+        ${renderBracketTree()}
+      </div>
+    </div>
+  `;
+}
+
+/**
+ * Mostra detalhes de uma foto (gráfico Elo, timeline, etc)
+ */
+function showPhotoDetails(photoId) {
+  if (!contestState) return;
+  
+  const photo = contestState.qualifiedPhotos.find(p => p.id === photoId);
+  if (!photo) return;
+  
+  const { eloScores, battleHistory, qualifying } = contestState;
+  const eloHistory = qualifying?.eloHistory[photoId] || [];
+  const photoBattles = battleHistory.filter(b => 
+    b.photoA === photoId || b.photoB === photoId
+  );
+  
+  // Criar modal de detalhes
+  const modal = document.createElement('div');
+  modal.className = 'photo-details-modal';
+  modal.innerHTML = `
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>Detalhes: ${photoId}</h3>
+        <button class="modal-close" onclick="this.closest('.photo-details-modal').remove()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="photo-details-main">
+          <img src="${photo.thumb}" alt="Foto" class="details-main-image">
+          <div class="details-stats">
+            <div class="stat-item">
+              <strong>Power Level Atual:</strong> ${Math.round(eloScores[photoId] || 1500)}
+            </div>
+            <div class="stat-item">
+              <strong>Ranking:</strong> #${calculatePhotoStats([photo], eloScores, battleHistory)[photoId].rank}
+            </div>
+          </div>
+        </div>
+        
+        <div class="details-section">
+          <h4>Evolução do Power Level</h4>
+          <canvas id="eloChart-${photoId}" width="800" height="200"></canvas>
+        </div>
+        
+        <div class="details-section">
+          <h4>Histórico de Batalhas</h4>
+          <div class="battle-timeline">
+            ${renderBattleTimeline(photoId, photoBattles, eloScores)}
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+  
+  document.body.appendChild(modal);
+  
+  // Renderizar gráfico
+  setTimeout(() => {
+    renderEloChart(`eloChart-${photoId}`, eloHistory);
+  }, 100);
+}
+
+/**
+ * Renderiza gráfico de evolução Elo
+ */
+function renderEloChart(canvasId, eloHistory) {
+  const canvas = $(canvasId);
+  if (!canvas || eloHistory.length < 2) return;
+  
+  const ctx = canvas.getContext('2d');
+  const width = canvas.width;
+  const height = canvas.height;
+  const padding = 40;
+  
+  // Limpar canvas
+  ctx.clearRect(0, 0, width, height);
+  
+  // Calcular escala
+  const elos = eloHistory.map(h => h.elo);
+  const minElo = Math.min(...elos);
+  const maxElo = Math.max(...elos);
+  const range = maxElo - minElo || 100;
+  const scaleY = (height - padding * 2) / range;
+  const scaleX = (width - padding * 2) / (eloHistory.length - 1);
+  
+  // Desenhar eixos
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(padding, padding);
+  ctx.lineTo(padding, height - padding);
+  ctx.lineTo(width - padding, height - padding);
+  ctx.stroke();
+  
+  // Desenhar linha do gráfico
+  ctx.strokeStyle = '#6aa3ff';
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  
+  eloHistory.forEach((point, idx) => {
+    const x = padding + idx * scaleX;
+    const y = height - padding - (point.elo - minElo) * scaleY;
+    
+    if (idx === 0) {
+      ctx.moveTo(x, y);
+    } else {
+      ctx.lineTo(x, y);
+    }
+  });
+  
+  ctx.stroke();
+  
+  // Desenhar pontos
+  ctx.fillStyle = '#6aa3ff';
+  eloHistory.forEach((point, idx) => {
+    const x = padding + idx * scaleX;
+    const y = height - padding - (point.elo - minElo) * scaleY;
+    
+    ctx.beginPath();
+    ctx.arc(x, y, 4, 0, Math.PI * 2);
+    ctx.fill();
+  });
+  
+  // Labels
+  ctx.fillStyle = '#fff';
+  ctx.font = '12px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('Power Level', width / 2, height - 10);
+}
+
+/**
+ * Renderiza timeline de batalhas
+ */
+function renderBattleTimeline(photoId, battles, eloScores) {
+  return battles.map((battle, idx) => {
+    const opponentId = battle.photoA === photoId ? battle.photoB : battle.photoA;
+    const opponent = contestState.qualifiedPhotos.find(p => p.id === opponentId);
+    const won = battle.winner === photoId;
+    const eloChange = won ? battle.eloChange.winner : battle.eloChange.loser;
+    const eloBefore = (eloScores[photoId] || 1500) - eloChange;
+    const eloAfter = eloScores[photoId] || 1500;
+    
+    return `
+      <div class="timeline-item ${won ? 'won' : 'lost'}">
+        <div class="timeline-marker"></div>
+        <div class="timeline-content">
+          <div class="timeline-header">
+            <span class="timeline-battle-num">Batalha ${idx + 1}</span>
+            <span class="timeline-result ${won ? 'win' : 'loss'}">${won ? 'Vitória' : 'Derrota'}</span>
+          </div>
+          <div class="timeline-opponent">
+            <img src="${opponent?.thumb || ''}" alt="Oponente" class="timeline-opponent-thumb">
+            <span>vs ${opponentId}</span>
+          </div>
+          <div class="timeline-elo">
+            <span class="elo-before">${Math.round(eloBefore)}</span>
+            <span class="elo-arrow">→</span>
+            <span class="elo-after">${Math.round(eloAfter)}</span>
+            <span class="elo-change ${eloChange > 0 ? 'positive' : 'negative'}">
+              (${eloChange > 0 ? '+' : ''}${Math.round(eloChange)})
+            </span>
+          </div>
+        </div>
+      </div>
+    `;
+  }).join('');
 }
 
 /**
@@ -2349,12 +2925,23 @@ function handleBattleKeys(e) {
 }
 
 /**
- * Registra vencedor de um confronto (sistema de ranking dinâmico)
+ * Registra vencedor de um confronto
  */
 async function chooseBattleWinner(winner) {
-  if (!contestState || contestState.phase !== 'battle') return;
+  if (!contestState || contestState.phase === 'finished') return;
   
-  const { currentMatch, eloScores } = contestState;
+  if (contestState.phase === 'qualifying') {
+    await handleQualifyingBattle(winner);
+  } else if (contestState.phase === 'bracket') {
+    await handleBracketBattle(winner);
+  }
+}
+
+/**
+ * Processa batalha da fase classificatória
+ */
+async function handleQualifyingBattle(winner) {
+  const { currentMatch, eloScores, qualifying } = contestState;
   if (!currentMatch) return;
   
   const winnerPhoto = winner === 'A' ? currentMatch.photoA : currentMatch.photoB;
@@ -2370,13 +2957,27 @@ async function chooseBattleWinner(winner) {
   // Atualizar scores
   contestState.eloScores = updateEloScores(winnerId, loserId, contestState.eloScores, 32);
   
+  // Atualizar histórico de Elo
+  const battleId = `battle-${Date.now()}`;
+  contestState.qualifying.eloHistory[winnerId].push({
+    elo: contestState.eloScores[winnerId],
+    timestamp: Date.now(),
+    battleId: battleId
+  });
+  contestState.qualifying.eloHistory[loserId].push({
+    elo: contestState.eloScores[loserId],
+    timestamp: Date.now(),
+    battleId: battleId
+  });
+  
   // Salvar no histórico
   contestState.battleHistory.push({
     photoA: currentMatch.photoA.id,
     photoB: currentMatch.photoB.id,
     winner: winnerId,
     timestamp: Date.now(),
-    eloChange: result.change
+    eloChange: result.change,
+    phase: 'qualifying'
   });
   
   // Feedback visual
@@ -2388,31 +2989,157 @@ async function chooseBattleWinner(winner) {
   
   toast(`Foto ${winner} venceu! ${result.change.winner > 0 ? '+' : ''}${result.change.winner} Elo`);
   
-  // Gerar próximo confronto baseado no ranking atualizado
-  const nextMatch = generateNextMatch(
-    contestState.qualifiedPhotos,
-    contestState.eloScores,
-    contestState.battleHistory
-  );
+  // Avançar para próxima batalha
+  contestState.qualifying.completedBattles++;
   
-  if (!nextMatch) {
-    // Todas as fotos já batalharam entre si - contest finalizado
-    contestState.phase = 'finished';
-    saveContestState();
-    
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    toast(`🏆 Contest finalizado! Todas as batalhas foram realizadas.`);
-    
-    setTimeout(() => {
-      location.hash = '#/results';
-    }, 1500);
+  // Verificar se fase classificatória terminou
+  if (contestState.qualifying.completedBattles >= contestState.qualifying.totalBattles ||
+      contestState.qualifying.pendingMatches.length === 0) {
+    // Finalizar classificatória e iniciar bracket
+    await finishQualifyingAndStartBracket();
     return;
   }
   
-  // Atualizar confronto atual
-  contestState.currentMatch = nextMatch;
+  // Próxima batalha da fila
+  contestState.qualifying.currentMatch = contestState.qualifying.pendingMatches.shift() || null;
   saveContestState();
   
+  await new Promise(resolve => setTimeout(resolve, 800));
+  await renderBattle();
+}
+
+/**
+ * Finaliza fase classificatória e inicia bracket
+ */
+async function finishQualifyingAndStartBracket() {
+  const { qualifiedPhotos, eloScores } = contestState;
+  
+  // Calcular ranking final
+  const ranked = [...qualifiedPhotos]
+    .sort((a, b) => (eloScores[b.id] || 1500) - (eloScores[a.id] || 1500));
+  
+  // Determinar seeds do bracket (top 16, ou todas se menos de 16)
+  const bracketSize = Math.min(16, Math.pow(2, Math.floor(Math.log2(ranked.length))));
+  const seeds = ranked.slice(0, bracketSize);
+  
+  // Gerar bracket de eliminatória
+  const bracket = generateBracketFromSeeds(seeds);
+  
+  contestState.phase = 'bracket';
+  contestState.bracket = {
+    seeds: seeds,
+    rounds: bracket.rounds,
+    currentRound: 1,
+    currentMatchIndex: 0
+  };
+  
+  saveContestState();
+  
+  toast(`🏆 Fase Classificatória finalizada! Top ${bracketSize} avançam para o Bracket Final.`);
+  await new Promise(resolve => setTimeout(resolve, 1500));
+  
+  await renderBattle();
+}
+
+/**
+ * Gera bracket de eliminatória a partir dos seeds
+ */
+function generateBracketFromSeeds(seeds) {
+  const rounds = [];
+  let currentRound = seeds;
+  let roundNum = 1;
+  
+  while (currentRound.length > 1) {
+    const matches = [];
+    
+    // Parear: 1º vs último, 2º vs penúltimo, etc
+    const half = Math.ceil(currentRound.length / 2);
+    for (let i = 0; i < half; i++) {
+      const photoA = currentRound[i];
+      const photoB = currentRound[currentRound.length - 1 - i];
+      
+      if (photoA && photoB && photoA.id !== photoB.id) {
+        matches.push({ photoA, photoB, winner: null, votesA: 0, votesB: 0 });
+      }
+    }
+    
+    rounds.push({ round: roundNum, matches: matches });
+    
+    // Próxima rodada terá metade dos participantes (vencedores)
+    currentRound = currentRound.slice(0, half);
+    roundNum++;
+  }
+  
+  return { rounds, totalRounds: rounds.length };
+}
+
+/**
+ * Processa batalha da fase bracket
+ */
+async function handleBracketBattle(winner) {
+  const { bracket, eloScores } = contestState;
+  const currentRound = bracket.rounds[bracket.currentRound - 1];
+  const currentMatch = currentRound.matches[bracket.currentMatchIndex];
+  
+  if (!currentMatch) return;
+  
+  const winnerPhoto = winner === 'A' ? currentMatch.photoA : currentMatch.photoB;
+  const winnerId = winnerPhoto.id;
+  
+  // Atualizar match
+  currentMatch.winner = winnerId;
+  currentMatch.votesA = winner === 'A' ? 1 : 0;
+  currentMatch.votesB = winner === 'B' ? 1 : 0;
+  
+  // Atualizar Elo (opcional no bracket)
+  const loserPhoto = winner === 'A' ? currentMatch.photoB : currentMatch.photoA;
+  const loserId = loserPhoto.id;
+  const result = calculateElo(
+    eloScores[winnerId] || 1500,
+    eloScores[loserId] || 1500,
+    32
+  );
+  contestState.eloScores = updateEloScores(winnerId, loserId, contestState.eloScores, 32);
+  
+  // Salvar no histórico
+  contestState.battleHistory.push({
+    photoA: currentMatch.photoA.id,
+    photoB: currentMatch.photoB.id,
+    winner: winnerId,
+    timestamp: Date.now(),
+    eloChange: result.change,
+    phase: 'bracket',
+    votesA: currentMatch.votesA,
+    votesB: currentMatch.votesB
+  });
+  
+  toast(`Foto ${winner} venceu! Avança para próxima rodada.`);
+  
+  // Avançar para próximo match
+  bracket.currentMatchIndex++;
+  
+  // Verificar se rodada terminou
+  if (bracket.currentMatchIndex >= currentRound.matches.length) {
+    // Avançar para próxima rodada
+    bracket.currentRound++;
+    bracket.currentMatchIndex = 0;
+    
+    if (bracket.currentRound > bracket.rounds.length) {
+      // Bracket finalizado!
+      contestState.phase = 'finished';
+      saveContestState();
+      
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      toast(`🏆 Contest finalizado! Campeão definido!`);
+      
+      setTimeout(() => {
+        location.hash = '#/results';
+      }, 1500);
+      return;
+    }
+  }
+  
+  saveContestState();
   await new Promise(resolve => setTimeout(resolve, 800));
   await renderBattle();
 }
