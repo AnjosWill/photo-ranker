@@ -1108,9 +1108,11 @@ body.selection-mode .split-btn {
 /* Layout de batalha (será usado em F4.3) */
 .contest-battle {
   width: 100%;
-  max-width: 1600px;
-  margin: 0 auto;
+  max-width: 100%;
+  margin: 0;
   padding: var(--gap-4);
+  padding-right: 200px; /* Espaço para o ranking sidebar fixo */
+  position: relative;
 }
 
 .contest-progress {
@@ -1145,7 +1147,7 @@ body.selection-mode .split-btn {
   width: 100%;
   max-width: 100%;
   margin: 0;
-  padding: 0;
+  padding: 0 var(--gap-2);
   position: relative;
 }
 
@@ -1162,9 +1164,10 @@ body.selection-mode .split-btn {
 
 /* Imagens grandes no container full */
 .battle-container-full .battle-photo {
-  max-height: 80vh;
-  min-height: 500px;
+  max-height: 85vh;
+  min-height: 600px;
   width: 100%;
+  aspect-ratio: auto;
 }
 
 .battle-photo:hover {
@@ -1186,8 +1189,11 @@ body.selection-mode .split-btn {
 }
 
 .battle-container-full .battle-photo img {
-  max-height: 80vh;
-  min-height: 500px;
+  max-height: 85vh;
+  min-height: 600px;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
 }
 
 .battle-label {
