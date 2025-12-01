@@ -1,6 +1,76 @@
 # Changelog
 Este projeto segue o formato **Keep a Changelog** e **SemVer**.
 
+## [v0.4.0] — 2025-10-31 (Sprint 4)
+### ✨ Funcionalidades
+**Contest Mode - Sistema Elo-Based Non-Repeat Pairwise Ranking:**
+- **Interface de Contest**
+  - Aba "Contest" funcional com contador de fotos qualificadas (⭐5)
+  - Botão "Iniciar Contest" / "Refazer Contest" (habilitado quando ≥ 2 fotos ⭐5)
+  - Modal de confirmação ao refazer contest (avisa que resultados anteriores serão apagados)
+  - Estados vazios: instruções claras e feedback visual
+- **Sistema Pairwise (Non-Repeat)**
+  - Cada par de fotos batalha apenas uma vez
+  - Total de confrontos: n*(n-1)/2 (todas as combinações possíveis)
+  - Pareamento híbrido: Elo similar (60%) + balanceamento de batalhas (40%)
+  - Finalização automática quando todas as combinações são esgotadas
+  - Exemplo (8 fotos): 28 confrontos únicos possíveis
+- **Sistema Elo de Pontuação**
+  - Algoritmo Elo (FIDE padrão) para calcular ratings
+  - Rating inicial: 1500 para todos
+  - K-factor: 32 (balanceado)
+  - Atualização após cada confronto
+  - Ranking final baseado exclusivamente em Elo (não W-L record)
+- **Interface de Batalha Interativa**
+  - Layout lado a lado (desktop) ou vertical (mobile)
+  - Progresso: "Batalha X de Y (Z pares únicos restantes)"
+  - Interação: click, touch, atalhos de teclado
+  - Atalhos: 1/← (Foto A), 2/→ (Foto B), Esc (cancelar)
+  - Feedback visual: borda verde ao vencer, escala 1.05
+  - Toast com mudança de Elo: "Foto A venceu! +16 Elo"
+  - Delay 800ms entre confrontos
+  - Ranking dinâmico ao lado mostrando posições atualizadas
+- **Tela de Resultados**
+  - Card do campeão com animações (bounce, gradient, entrance)
+  - Foto grande + ícone 🏆
+  - Estatísticas: Elo final, vitórias, derrotas, média de batalhas por foto
+  - Ranking completo ordenado por Elo final
+  - Heatmap de confrontos (clicável para abrir fotos no viewer)
+  - Histórico cronológico de confrontos (visualização compacta em 2 colunas, clicável)
+  - Botão "🔄 Recomeçar Contest" (com modal de confirmação)
+  - Navegação: "Voltar para Avaliação"
+
+**Persistência:**
+- Estado do contest salvo no localStorage
+- Continuar de onde parou (interromper e voltar)
+- Próximo par a batalhar, confrontos realizados, Elo scores
+- Histórico completo de batalhas
+- Migração automática de estados antigos (bracket → pairwise)
+
+### 🎨 UX e Interface
+- **Animações**: pulse no ícone 🏆, bounce no campeão, entrance animations
+- **Feedback Visual**: 
+  - Borda verde ao vencer
+  - Escala e hover nos confrontos
+  - Toasts informativos em cada etapa
+- **Progresso Detalhado**: "Rodada 2 de 3 / Confronto 1 de 2"
+- **Responsividade**: Layout adaptativo (lado a lado → vertical)
+- **Estados Vazios**: Mensagens claras e call-to-actions
+
+### ♿ Acessibilidade
+- ARIA labels em fotos de batalha
+- Navegação por teclado completa (1, 2, ←, →, Esc)
+- Foco visível em elementos interativos
+- Screen reader friendly
+
+### 📄 Documentação
+- Documentos de planejamento: F4.1-F4.4_PLAN.md
+- Casos de teste: F4.1-F4.4_TESTS.md (31 casos)
+- SPRINTS_4_5_STRATEGY.md (estratégia completa)
+- docs/sprint-4/ com toda documentação
+
+---
+
 ## [v0.3.0] — 2025-10-31 (Sprint 3)
 ### ✨ Funcionalidades
 **Sistema de Avaliação por Estrelas (1-5):**

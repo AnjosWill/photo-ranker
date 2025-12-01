@@ -1,33 +1,66 @@
 /**
  * app.js - Photo Ranker MVP
- * Lógica principal da aplicação
+ * Lógica principal da aplicação - Orquestração e UI
  * 
- * Sprint 1: Upload, grid, viewer, multi-select
- * Sprint 2: Detecção 2×2, cropper, zoom/pan
- * Sprint 3: Rating por estrelas, filtros, ordenação, aba "Avaliar"
+ * Features implementadas:
+ * - Upload, grid, viewer, multi-select
+ * - Detecção 2×2, cropper, zoom/pan
+ * - Rating por estrelas, filtros, ordenação, aba "Avaliar"
+ * - Contest Mode com sistema Elo-Based Non-Repeat Pairwise Ranking (Sprint 4)
+ * 
+ * Módulos:
+ * - modules/contest/contest-manager.js: Gerenciamento de ciclo de vida
+ * - modules/contest/contest-state.js: Validação e manipulação de estado
+ * - modules/contest/contest-battle.js: Renderização e interação de batalhas
+ * - modules/contest/contest-results.js: Exibição de resultados e rankings
  */
 
 import { $, on } from "./ui.js";
+import { calculateScoresAndTiers, calculateEloRange, normalizeEloToScore, getTierFromScore, TIERS } from "./tiers.js";
 import { savePhotos, getAllPhotos, clearAll } from "./db.js";
 import { filesToThumbs } from "./image-utils.js";
 import { openCropper } from "./cropper.js";
 import { createStarRating, updateStarRating } from "./rating.js";
+import { 
+  initializeEloScores, 
+  updateEloScores
+} from "./elo.js";
+import { 
+  startContest as startContestManager, 
+  finishContest as finishContestManager, 
+  saveContestState as saveContestStateManager, 
+  loadContestState as loadContestStateManager 
+} from "./modules/contest/contest-manager.js";
+import {
+  calculatePhotoStats as calculatePhotoStatsState,
+  calculateRankingFromStats,
+  validateContestState as validateContestStateState
+} from "./modules/contest/contest-state.js";
+import { createBattleModule } from "./modules/contest/contest-battle.js";
+import { createResultsModule } from "./modules/contest/contest-results.js";
 
 const MAX_SIZE_MB = 15;
 const MAX_FILES_PER_BATCH = 300;
-const ACCEPTED_TYPES = /^image\/(jpeg|jpg|png|webp|heic|heif)$/i; // aceitamos HEIC/HEIF, mas validaremos decodificação
+const ACCEPTED_TYPES = /^image\/(jpeg|jpg|png|webp|heic|heif)$/i;
 
 const routes = ["upload", "rate", "contest", "results"];
 
-let confirmOpen = false; // ⬅️ novo: bloqueia navegação do viewer quando true
+let confirmOpen = false;
+let isResultsViewMode = false;
+let resultsRankingList = [];
 
-// Sprint 3: Estado de filtros e rating
-let currentFilter = 'all'; // 'all' | 'rated5' | 'unrated'
-let currentSort = 'date-desc'; // Ordenação ativa
-let allPhotos = []; // Cache de todas as fotos
-let rateViewIndex = 0; // Índice atual na aba "Avaliar"
-let rateViewPhotos = []; // Lista de fotos para avaliar (filtrada)
-let rateViewOnlyUnrated = false; // Filtro "apenas não avaliadas"
+let currentFilter = 'all';
+let currentSort = 'date-desc';
+let allPhotos = [];
+let rateViewIndex = 0;
+let rateViewPhotos = [];
+let rateViewOnlyUnrated = false;
+
+let contestState = null;
+
+// Módulos de Contest
+let battleModule = null;
+let resultsModule = null;
 
 // Opções de ordenação
 const SORT_OPTIONS = {
@@ -60,8 +93,14 @@ window.addEventListener("hashchange", router);
 window.addEventListener("DOMContentLoaded", async () => {
   router();
   initUpload();
-  initFilters(); // Sprint 3
-  initRateView(); // Sprint 3
+  initFilters();
+  initRateView();
+  
+  // Inicializar módulos de Contest
+  initializeContestModules();
+  
+  initContestView();
+  initResultsView();
   
   const selectBtn = document.getElementById("selectModeBtn");
   selectBtn?.addEventListener("click", () => toggleSelectionMode());
@@ -83,7 +122,7 @@ window.addEventListener("DOMContentLoaded", async () => {
       toggleSelectionMode(false); // ⬅️ sai do modo e limpa seleção
     }
     
-    // Sprint 3: Atalhos de rating (1-5, 0) - Globais
+    // Atalhos de rating (1-5, 0) - Globais
     // Apenas quando não está digitando E não está no viewer (viewer tem seus próprios handlers)
     const viewerOpen = $('#viewer')?.getAttribute('aria-hidden') === 'false';
     if (!viewerOpen && !typing && e.key >= '0' && e.key <= '5') {
@@ -335,7 +374,7 @@ async function handleFiles(fileList) {
       );
     }
 
-    // Sprint 2: Análise de imagens 2×2 via worker
+    // Análise de imagens 2×2 via worker
     updateProgress("Analisando imagens para detecção 2×2...", 90);
     const { normalPhotos, quadCandidates } = await analyzePhotosForQuad(newPhotos);
     
@@ -648,14 +687,14 @@ function renderGrid(photos, keepFocusOnPhotoId = null) {
   // Atualizar cache global
   allPhotos = photos;
   
-  // Sprint 2: Filtrar fotos divididas (originais com _isSplit)
+  // Filtrar fotos divididas (originais com _isSplit)
   let visiblePhotos = photos.filter(p => !p._isSplit);
   
-  // Sprint 3: Aplicar ordenação ativa
+  // Aplicar ordenação ativa
   const sortFn = SORT_OPTIONS[currentSort]?.fn || SORT_OPTIONS['date-desc'].fn;
   visiblePhotos.sort(sortFn);
   
-  // Sprint 3: Aplicar filtro ativo
+  // Aplicar filtro ativo
   const filteredPhotos = applyCurrentFilter(visiblePhotos);
   
   // Toast se filtro vazio (mas há fotos no total)
@@ -693,7 +732,7 @@ function renderGrid(photos, keepFocusOnPhotoId = null) {
     card.className = "photo-card";
     card.dataset.id = p.id;
     card.tabIndex = 0;
-    // Sprint 3: Marcar se está avaliada para controlar opacidade das estrelas
+    // Marcar se está avaliada para controlar opacidade das estrelas
     if (p.rating > 0) card.dataset.rated = "true";
     if (selectedIds.has(p.id)) card.classList.add("selected");
     
@@ -729,7 +768,7 @@ function renderGrid(photos, keepFocusOnPhotoId = null) {
       <div class="photo-badges">${badges.join("")}</div>
     `;
     
-    // Sprint 3: Adicionar estrelas de rating
+    // Adicionar estrelas de rating
     const ratingContainer = document.createElement("div");
     ratingContainer.className = "photo-rating";
     const starRating = createStarRating(p.rating || 0, (newRating) => {
@@ -835,7 +874,7 @@ function renderGrid(photos, keepFocusOnPhotoId = null) {
       window.scrollTo(0, savedScrollTop);
       
       // Focar primeiro card se não estiver em modo seleção
-      const first = !selectionMode && grid.querySelector(".photo-card");
+  const first = !selectionMode && grid.querySelector(".photo-card");
       if (first && savedScrollTop === 0) {
         // Apenas focar se estava no topo (comportamento original)
         first.focus();
@@ -919,8 +958,23 @@ let currentList = [];
  * Abre viewer pelo ID da foto (mais confiável que usar índice)
  */
 async function openViewerByPhotoId(photoId) {
+  // Limpar modo resultados se estiver ativo
+  if (isResultsViewMode) {
+    isResultsViewMode = false;
+    resultsRankingList = [];
+    const v = document.getElementById("viewer");
+    if (v) {
+      v.classList.remove("results-mode");
+      const infoElement = document.getElementById("viewerResultsInfo");
+      if (infoElement) infoElement.remove();
+    }
+  }
+  
+  // Garantir que botões estejam visíveis ao abrir viewer na aba Upload
+  showViewerButtons();
+  
   const allPhotos = await getAllPhotos();
-  // Sprint 3: Aplicar mesma ordenação e filtro do grid
+  // Aplicar mesma ordenação e filtro do grid
   let visiblePhotos = allPhotos.filter(p => !p._isSplit);
   const sortFn = SORT_OPTIONS[currentSort]?.fn || SORT_OPTIONS['date-desc'].fn;
   visiblePhotos.sort(sortFn);
@@ -943,7 +997,7 @@ async function openViewerByPhotoId(photoId) {
   resetZoom();
   // atualizar botão dividir/restaurar
   updateViewerSplitButton();
-  // Sprint 3: Atualizar estrelas de rating
+  // Atualizar estrelas de rating
   updateViewerRating();
 }
 
@@ -951,8 +1005,23 @@ async function openViewerByPhotoId(photoId) {
  * Abre viewer pelo índice (mantido para compatibilidade)
  */
 async function openViewer(index) {
+  // Limpar modo resultados se estiver ativo
+  if (isResultsViewMode) {
+    isResultsViewMode = false;
+    resultsRankingList = [];
+    const v = document.getElementById("viewer");
+    if (v) {
+      v.classList.remove("results-mode");
+      const infoElement = document.getElementById("viewerResultsInfo");
+      if (infoElement) infoElement.remove();
+    }
+  }
+  
+  // Garantir que botões estejam visíveis ao abrir viewer na aba Upload
+  showViewerButtons();
+  
   const allPhotos = await getAllPhotos();
-  // Sprint 3: Aplicar mesma ordenação e filtro do grid
+  // Aplicar mesma ordenação e filtro do grid
   let visiblePhotos = allPhotos.filter(p => !p._isSplit);
   const sortFn = SORT_OPTIONS[currentSort]?.fn || SORT_OPTIONS['date-desc'].fn;
   visiblePhotos.sort(sortFn);
@@ -970,11 +1039,88 @@ async function openViewer(index) {
   resetZoom();
   // atualizar botão dividir/restaurar
   updateViewerSplitButton();
-  // Sprint 3: Atualizar estrelas de rating
+  // Atualizar estrelas de rating
   updateViewerRating();
 }
 
+/**
+ * Abre visualizador na aba Resultados
+ * @param {string} photoId - ID da foto a ser visualizada
+ * @param {Array} rankingList - Lista de fotos do ranking ordenadas
+ */
+function openResultsViewer(photoId, rankingList) {
+  if (!rankingList || rankingList.length === 0) return;
+  
+  isResultsViewMode = true;
+  resultsRankingList = rankingList;
+  currentList = rankingList;
+  
+  // Encontrar índice da foto pelo ID
+  const index = rankingList.findIndex(p => p.id === photoId);
+  if (index < 0) return;
+  
+  currentIndex = index;
+  const v = document.getElementById("viewer");
+  const img = document.getElementById("viewerImg");
+  img.src = rankingList[currentIndex].thumb;
+  v.setAttribute("aria-hidden", "false");
+  v.classList.add("results-mode");
+  
+  document.addEventListener("keydown", viewerKeys);
+  resetZoom();
+  updateResultsViewerInfo();
+  
+  setTimeout(() => {
+    hideResultsViewerButtons();
+  }, 0);
+}
+
+/**
+ * Atualiza informações exibidas no visualizador de resultados
+ */
+function updateResultsViewerInfo() {
+  if (!isResultsViewMode || !resultsRankingList.length || currentIndex < 0) return;
+  
+  const photo = resultsRankingList[currentIndex];
+  const displayRank = photo.stats?.rank || (currentIndex + 1);
+  const scoreData = photo.scoreData;
+  const isChampion = photo.id === contestState?.championId;
+  
+  // Criar ou atualizar elemento de informações
+  let infoElement = document.getElementById("viewerResultsInfo");
+  if (!infoElement) {
+    infoElement = document.createElement("div");
+    infoElement.id = "viewerResultsInfo";
+    infoElement.className = "viewer-results-info";
+    const viewer = document.getElementById("viewer");
+    if (viewer) viewer.appendChild(infoElement);
+  }
+  
+  const badges = [];
+  if (photo._parentId) badges.push('<span class="badge badge-split">Cortado</span>');
+  if (typeof photo.rating === "number" && photo.rating > 0) {
+    badges.push(`<span class="badge badge-rated">★ ${photo.rating}</span>`);
+  }
+  if (!photo.rating) badges.push('<span class="badge badge-new">Novo</span>');
+  
+  infoElement.innerHTML = `
+    <div class="viewer-results-rank">#${displayRank}${isChampion ? ' 🏆' : ''}</div>
+    <div class="viewer-results-badges">${badges.join('')}</div>
+    <div class="viewer-results-stats">
+      <div class="tier-badge tier-badge-small">
+        <div class="tier-icon">${scoreData.tier.icon}</div>
+        <div class="tier-score">${scoreData.score}/100</div>
+        <div class="tier-label">${scoreData.tier.label}</div>
+      </div>
+      <div class="viewer-results-record">
+        ${photo.stats.wins}V - ${photo.stats.losses}D
+      </div>
+    </div>
+  `;
+}
+
 function updateViewerSplitButton() {
+  if (isResultsViewMode) return; // Não atualizar no modo resultados
   if (currentIndex < 0 || !currentList.length) return;
   
   const photo = currentList[currentIndex];
@@ -1012,41 +1158,115 @@ function closeViewer() {
   v.setAttribute("aria-hidden", "true");
   document.removeEventListener("keydown", viewerKeys);
   
-  // Sprint 3: Ao fechar viewer, fazer scroll até a última foto visualizada
-  if (currentIndex >= 0 && currentList[currentIndex]) {
-    const lastViewedPhotoId = currentList[currentIndex].id;
+  // Limpar modo resultados
+  if (isResultsViewMode) {
+    isResultsViewMode = false;
+    resultsRankingList = [];
+    v.classList.remove("results-mode");
     
-    // Fazer scroll até a foto no grid
-    setTimeout(() => {
-      const targetCard = document.querySelector(`.photo-card[data-id="${lastViewedPhotoId}"]`);
-      if (targetCard) {
-        const rect = targetCard.getBoundingClientRect();
-        const currentScrollTop = window.pageYOffset || document.documentElement.scrollTop;
-        const targetPosition = rect.top + currentScrollTop - 100;
-        
-        window.scrollTo({
-          top: Math.max(0, targetPosition),
-          behavior: 'smooth'
-        });
-        
-        // Destaque visual
-        targetCard.style.transition = 'box-shadow 0.3s ease';
-        targetCard.style.boxShadow = '0 0 0 3px rgba(106, 163, 255, 0.6)';
-        setTimeout(() => {
-          targetCard.style.boxShadow = '';
-        }, 600);
-      }
-    }, 100);
+    // Remover elemento de informações
+    const infoElement = document.getElementById("viewerResultsInfo");
+    if (infoElement) infoElement.remove();
+  }
+  
+  // Sempre restaurar botões quando fechar viewer (independente do modo)
+  showViewerButtons();
+  
+  if (!isResultsViewMode) {
+    // Ao fechar viewer, fazer scroll até a última foto visualizada
+    if (currentIndex >= 0 && currentList[currentIndex]) {
+      const lastViewedPhotoId = currentList[currentIndex].id;
+      
+      // Fazer scroll até a foto no grid
+      setTimeout(() => {
+        const targetCard = document.querySelector(`.photo-card[data-id="${lastViewedPhotoId}"]`);
+        if (targetCard) {
+          const rect = targetCard.getBoundingClientRect();
+          const currentScrollTop = window.pageYOffset || document.documentElement.scrollTop;
+          const targetPosition = rect.top + currentScrollTop - 100;
+          
+          window.scrollTo({
+            top: Math.max(0, targetPosition),
+            behavior: 'smooth'
+          });
+          
+          // Destaque visual
+          targetCard.style.transition = 'box-shadow 0.3s ease';
+          targetCard.style.boxShadow = '0 0 0 3px rgba(106, 163, 255, 0.6)';
+          setTimeout(() => {
+            targetCard.style.boxShadow = '';
+          }, 600);
+        }
+      }, 100);
+    }
   }
 }
 function viewerPrev() {
-  if (currentIndex > 0) {
-    openViewer(currentIndex - 1);
+  if (isResultsViewMode) {
+    if (currentIndex > 0) {
+      currentIndex--;
+      const img = document.getElementById("viewerImg");
+      img.src = resultsRankingList[currentIndex].thumb;
+      resetZoom();
+      updateResultsViewerInfo();
+      // Garantir que botões continuem escondidos
+      hideResultsViewerButtons();
+    }
+  } else {
+    if (currentIndex > 0) {
+      openViewer(currentIndex - 1);
+    }
   }
 }
 function viewerNext() {
-  if (currentIndex < currentList.length - 1) {
-    openViewer(currentIndex + 1);
+  if (isResultsViewMode) {
+    if (currentIndex < resultsRankingList.length - 1) {
+      currentIndex++;
+      const img = document.getElementById("viewerImg");
+      img.src = resultsRankingList[currentIndex].thumb;
+      resetZoom();
+      updateResultsViewerInfo();
+      // Garantir que botões continuem escondidos
+      hideResultsViewerButtons();
+    }
+  } else {
+    if (currentIndex < currentList.length - 1) {
+      openViewer(currentIndex + 1);
+    }
+  }
+}
+
+/**
+ * Esconde botões de dividir, restaurar e excluir no modo resultados
+ */
+function hideResultsViewerButtons() {
+  if (!isResultsViewMode) return;
+  
+  const deleteBtn = document.querySelector(".viewer-delete");
+  const splitBtn = document.querySelector(".viewer-split");
+  if (deleteBtn) {
+    deleteBtn.style.display = "none";
+    deleteBtn.style.visibility = "hidden";
+  }
+  if (splitBtn) {
+    splitBtn.style.display = "none";
+    splitBtn.style.visibility = "hidden";
+  }
+}
+
+/**
+ * Mostra botões de dividir, restaurar e excluir (restaura visibilidade)
+ */
+function showViewerButtons() {
+  const deleteBtn = document.querySelector(".viewer-delete");
+  const splitBtn = document.querySelector(".viewer-split");
+  if (deleteBtn) {
+    deleteBtn.style.display = "";
+    deleteBtn.style.visibility = "";
+  }
+  if (splitBtn) {
+    splitBtn.style.display = "";
+    splitBtn.style.visibility = "";
   }
 }
 function viewerKeys(e) {
@@ -1065,7 +1285,7 @@ function viewerKeys(e) {
     e.preventDefault();
     onViewerDelete();
   }
-  // Sprint 3: Atalhos de rating no viewer (1-5 para avaliar, 0 para remover)
+  // Atalhos de rating no viewer (1-5 para avaliar, 0 para remover)
   if (e.key >= '1' && e.key <= '5') {
     e.preventDefault();
     const rating = parseInt(e.key, 10);
@@ -1519,7 +1739,7 @@ function getTouchDistance(touches) {
 document.addEventListener('DOMContentLoaded', initViewerZoom);
 
 // ========================================
-//  SPRINT 3: RATING E FILTROS
+// ===== RATING E FILTROS =====
 // ========================================
 
 /**
@@ -1671,7 +1891,7 @@ function updateSortSelect() {
 }
 
 // ========================================
-//  SPRINT 3: ABA "AVALIAR"
+// ===== ABA "AVALIAR" =====
 // ========================================
 
 /**
@@ -1689,6 +1909,1186 @@ function initRateView() {
   // Se já estiver na aba ao carregar
   if (location.hash === '#/rate') {
     setTimeout(() => renderRateView(), 100);
+  }
+}
+
+// ========================================
+// ===== CONTEST MODE =====
+// ========================================
+
+/**
+ * Inicializa módulos de Contest
+ */
+function initializeContestModules() {
+  // Helpers para acesso ao contestState
+  const getContestState = () => contestState;
+  const setContestState = (state) => { contestState = state; };
+  
+  // Criar módulo de batalhas
+  battleModule = createBattleModule({
+    getContestState,
+    setContestState,
+    renderContestView,
+    finishContest,
+    saveContestState,
+    toast,
+    confirmCancelContest,
+    generateNextPairwiseMatch
+  });
+  
+  // Criar módulo de resultados
+  resultsModule = createResultsModule({
+    getContestState,
+    setContestState,
+    saveContestState,
+    openConfirm,
+    toast,
+    openResultsViewer,
+    renderHeatmap
+  });
+}
+
+/**
+ * Inicializa aba "Contest"
+ */
+function initContestView() {
+  // Renderizar quando aba for aberta
+  window.addEventListener('hashchange', () => {
+    if (location.hash === '#/contest') {
+      renderContestView();
+    }
+  });
+  
+  if (location.hash === '#/contest') {
+    setTimeout(() => renderContestView(), 100);
+  }
+  
+  setTimeout(() => {
+    const contestSection = document.querySelector('[data-route="contest"]');
+    const contestView = $('#contestView');
+    if (contestSection && contestSection.classList.contains('active') && contestView && !contestView.innerHTML.trim()) {
+      renderContestView();
+    }
+  }, 500);
+}
+
+/**
+ * Renderiza aba "Contest"
+ */
+async function renderContestView() {
+  const container = $('#contestView');
+  if (!container) {
+    return;
+  }
+  
+  allPhotos = await getAllPhotos();
+  const visiblePhotos = allPhotos.filter(p => !p._isSplit);
+  
+  loadContestState();
+  
+  // Sistema pairwise: apenas fase 'qualifying' (fase 'final' é legado para migração)
+  if (contestState && contestState.phase === 'qualifying') {
+    await renderBattle();
+    return;
+  }
+  
+  const qualifiedPhotos = visiblePhotos.filter(p => p.rating === 5);
+  const qualifiedCount = qualifiedPhotos.length;
+  
+  // Verificar se há contest finalizado
+  const hasFinishedContest = contestState && contestState.phase === 'finished';
+  const buttonText = hasFinishedContest ? 'Refazer Contest' : 'Iniciar Contest';
+  const buttonClass = hasFinishedContest ? 'btn btn-warning' : 'btn';
+  
+  container.innerHTML = `
+    <div class="contest-empty">
+      <div class="contest-empty-icon">🏆</div>
+      <h3>Contest Mode</h3>
+      <p>Compare fotos lado a lado e escolha a melhor!</p>
+      
+      ${hasFinishedContest ? '<p class="muted" style="color: #ffa500; margin-bottom: var(--gap-2);">⚠️ Você já possui um contest finalizado. Refazer irá apagar os resultados anteriores.</p>' : ''}
+      
+      <div class="contest-stats">
+        <div class="contest-stat">
+          <strong>${qualifiedCount}</strong>
+          <span>foto${qualifiedCount !== 1 ? 's' : ''} qualificada${qualifiedCount !== 1 ? 's' : ''} (⭐5)</span>
+        </div>
+      </div>
+      
+      <button id="startContest" class="${buttonClass}" ${qualifiedCount < 2 ? 'disabled' : ''}>
+        ${buttonText}
+      </button>
+      
+      <p class="muted">
+        ${qualifiedCount < 2 
+          ? 'Você precisa de pelo menos 2 fotos com ⭐5 para iniciar' 
+          : hasFinishedContest 
+            ? 'Clique para refazer o contest (resultados anteriores serão apagados)'
+            : 'Clique para começar os confrontos'}
+      </p>
+    </div>
+  `;
+  
+  const startBtn = $('#startContest');
+  if (startBtn && !startBtn.disabled) {
+    startBtn.addEventListener('click', async () => {
+      // Se há contest finalizado, mostrar modal de confirmação
+      if (hasFinishedContest) {
+        openConfirm({
+          title: 'Refazer Contest?',
+          message: 'Ao refazer o contest, todos os resultados anteriores, histórico de batalhas e colocações das fotos serão apagados permanentemente. Deseja realmente continuar?',
+          confirmText: 'Sim, Refazer',
+          onConfirm: async () => {
+            try {
+              // Limpar estado anterior antes de iniciar novo
+              contestState = null;
+              saveContestState();
+              await startContest();
+            } catch (error) {
+              console.error('Erro ao refazer contest:', error);
+              toast('Erro ao refazer contest. Verifique o console para mais detalhes.');
+            }
+          }
+        });
+      } else {
+        // Contest novo, iniciar normalmente
+        try {
+          await startContest();
+        } catch (error) {
+          console.error('Erro ao iniciar contest:', error);
+          toast('Erro ao iniciar contest. Verifique o console para mais detalhes.');
+        }
+      }
+    });
+  }
+}
+
+/**
+ * Gera próximo par único para confronto pairwise (sistema non-repeat)
+ * Estratégia híbrida: Elo similar (60%) + balanceamento de batalhas (40%)
+ * @param {Array} photos - Fotos participantes
+ * @param {Object} eloScores - Scores Elo atuais
+ * @param {Array} battleHistory - Histórico de batalhas
+ * @returns {Object|null} {photoA, photoB} ou null se todas as combinações foram esgotadas
+ */
+function generateNextPairwiseMatch(photos, eloScores, battleHistory) {
+  if (photos.length < 2) return null;
+  
+  // Criar Set de pares já batalhados
+  const battledPairs = new Set();
+  battleHistory.forEach(b => {
+    const pairKey = [b.photoA, b.photoB].sort().join('-');
+    battledPairs.add(pairKey);
+  });
+  
+  // Contar batalhas por foto
+  const photoBattleCount = {};
+  photos.forEach(p => {
+    photoBattleCount[p.id] = battleHistory.filter(b => 
+      b.photoA === p.id || b.photoB === p.id
+    ).length;
+  });
+  
+  // Ordenar por Elo
+  const ranked = [...photos].sort((a, b) => 
+    (eloScores[b.id] || 1500) - (eloScores[a.id] || 1500)
+  );
+  
+  // Calcular todos os pares possíveis com scores
+  const candidatePairs = [];
+  
+  for (let i = 0; i < ranked.length; i++) {
+    for (let j = i + 1; j < ranked.length; j++) {
+      const photoA = ranked[i];
+      const photoB = ranked[j];
+      const pairKey = [photoA.id, photoB.id].sort().join('-');
+      
+      // Pular se já batalharam
+      if (battledPairs.has(pairKey)) continue;
+      
+      // Calcular scores
+      const eloA = eloScores[photoA.id] || 1500;
+      const eloB = eloScores[photoB.id] || 1500;
+      const eloDiff = Math.abs(eloA - eloB);
+      
+      // Score de similaridade de Elo (menor diferença = maior score)
+      // Normalizar: diferença 0 = score 1.0, diferença 500+ = score próximo de 0
+      const maxEloDiff = 1000; // Diferença máxima esperada
+      const eloSimilarityScore = 1 - Math.min(eloDiff / maxEloDiff, 1);
+      
+      // Score de balanceamento (fotos com menos batalhas = maior score)
+      const maxBattles = Math.max(...Object.values(photoBattleCount), 1);
+      const avgBattles = Object.values(photoBattleCount).reduce((a, b) => a + b, 0) / photos.length;
+      const battlesA = photoBattleCount[photoA.id] || 0;
+      const battlesB = photoBattleCount[photoB.id] || 0;
+      const balanceScore = 1 - (Math.abs(battlesA - avgBattles) + Math.abs(battlesB - avgBattles)) / (maxBattles * 2);
+      
+      // Score combinado (60% Elo similar, 40% balanceamento)
+      const totalScore = eloSimilarityScore * 0.6 + balanceScore * 0.4;
+      
+      candidatePairs.push({
+        photoA,
+        photoB,
+        eloSimilarityScore,
+        balanceScore,
+        totalScore,
+        eloDiff
+      });
+    }
+  }
+  
+  // Se não há mais pares disponíveis, retornar null
+  if (candidatePairs.length === 0) {
+    return null;
+  }
+  
+  // Ordenar por score total (maior primeiro)
+  candidatePairs.sort((a, b) => b.totalScore - a.totalScore);
+  
+  // Retornar o melhor par
+  const bestPair = candidatePairs[0];
+  return {
+    photoA: bestPair.photoA,
+    photoB: bestPair.photoB
+  };
+}
+
+/**
+ * Inicia um novo contest (Sistema Pairwise)
+ */
+async function startContest() {
+  const context = {
+    contestState: { current: contestState },
+    renderBattle: async () => {
+      // Atualizar contestState global antes de renderizar
+      contestState = context.contestState.current;
+      if (battleModule) {
+        return battleModule.renderBattle();
+      }
+      return renderBattle();
+    },
+    toast,
+    allPhotos
+  };
+  await startContestManager(context);
+  // Atualizar referência global após startContest
+  contestState = context.contestState.current;
+  
+  // Garantir que o estado foi salvo
+  saveContestState();
+}
+
+
+/**
+ * Organiza batalhas em rodadas de eliminatória progressiva
+ * Rastreia vencedores e perdedores, mostrando como avançam
+ */
+function organizeBattlesIntoRounds(battleHistory, qualifiedPhotos) {
+  if (battleHistory.length === 0) return { rounds: [] };
+  
+  const rounds = [];
+  let processedBattles = 0;
+  let currentRound = 1;
+  let currentWinners = new Set(qualifiedPhotos.map(p => p.id)); // Todos começam como "vencedores" (ainda não perderam)
+  let currentLosers = new Set();
+  
+  // Rodada 1: primeiras batalhas (todos contra todos iniciais)
+  const initialBattles = Math.min(qualifiedPhotos.length - 1, battleHistory.length);
+  const round1 = battleHistory.slice(0, initialBattles);
+  
+  if (round1.length > 0) {
+    const r1Winners = new Set();
+    const r1Losers = new Set();
+    
+    round1.forEach(b => {
+      r1Winners.add(b.winner);
+      const loser = b.photoA === b.winner ? b.photoB : b.photoA;
+      r1Losers.add(loser);
+    });
+    
+    rounds.push({
+      round: 1,
+      battles: round1,
+      winners: r1Winners,
+      losers: r1Losers,
+      label: 'Rodada 1'
+    });
+    
+    currentWinners = r1Winners;
+    currentLosers = r1Losers;
+    processedBattles = round1.length;
+    currentRound = 2;
+  }
+  
+  // Rodadas seguintes: organizar por vencedores e perdedores
+  while (processedBattles < battleHistory.length) {
+    const roundWinners = [];
+    const roundLosers = [];
+    const nextWinners = new Set();
+    const nextLosers = new Set();
+    
+    // Processar batalhas restantes
+    for (let i = processedBattles; i < battleHistory.length; i++) {
+      const battle = battleHistory[i];
+      const photoA = battle.photoA;
+      const photoB = battle.photoB;
+      
+      const bothWinners = currentWinners.has(photoA) && currentWinners.has(photoB);
+      const bothLosers = currentLosers.has(photoA) && currentLosers.has(photoB);
+      
+      if (bothWinners) {
+        roundWinners.push(battle);
+        nextWinners.add(battle.winner);
+        const loser = photoA === battle.winner ? photoB : photoA;
+        nextLosers.add(loser);
+        processedBattles++;
+      } else if (bothLosers) {
+        roundLosers.push(battle);
+        nextWinners.add(battle.winner); // Vencedor entre perdedores avança
+        const loser = photoA === battle.winner ? photoB : photoA;
+        nextLosers.add(loser);
+        processedBattles++;
+      } else {
+        // Batalha mista ou fora de ordem - pular por enquanto
+        break;
+      }
+    }
+    
+    // Adicionar rodadas
+    if (roundWinners.length > 0) {
+      rounds.push({
+        round: currentRound,
+        battles: roundWinners,
+        winners: nextWinners,
+        losers: nextLosers,
+        label: `Rodada ${currentRound} - Vencedores`
+      });
+      currentWinners = nextWinners;
+      currentRound++;
+    }
+    
+    if (roundLosers.length > 0) {
+      rounds.push({
+        round: currentRound,
+        battles: roundLosers,
+        winners: nextWinners,
+        losers: nextLosers,
+        label: `Rodada ${currentRound} - Perdedores`
+      });
+      currentRound++;
+    }
+    
+    // Se não processou nenhuma batalha, parar
+    if (roundWinners.length === 0 && roundLosers.length === 0) {
+      break;
+    }
+  }
+  
+  // Batalhas restantes (fora de ordem ou mistas)
+  const remainingBattles = battleHistory.slice(processedBattles);
+  if (remainingBattles.length > 0) {
+    rounds.push({
+      round: currentRound,
+      battles: remainingBattles,
+      winners: new Set(),
+      losers: new Set(),
+      label: 'Batalhas Adicionais'
+    });
+  }
+  
+  return { rounds };
+}
+
+/**
+ * Renderiza bracket visual mostrando lógica de eliminatória
+ * Vencedores avançam, perdedores batalham entre si
+ * @returns {string} HTML do bracket
+ */
+function renderBracket() {
+  if (!contestState) return '';
+  
+  const { currentMatch, battleHistory, eloScores, qualifiedPhotos } = contestState;
+  
+  // Calcular estatísticas
+  const photoStats = calculatePhotoStatsState(qualifiedPhotos, eloScores, battleHistory, contestState);
+  
+  // Organizar batalhas em rodadas
+  const { rounds } = organizeBattlesIntoRounds(battleHistory, qualifiedPhotos);
+  
+  let html = '<div class="bracket-diagram">';
+  
+  // Renderizar cada rodada
+  rounds.forEach((round, roundIdx) => {
+    html += `<div class="bracket-column ${roundIdx === 0 ? 'active' : ''}" data-round="${roundIdx}">`;
+    html += `<div class="bracket-column-label">${round.label}</div>`;
+    html += `<div class="bracket-column-content">`;
+    
+    round.battles.forEach((battle, battleIdx) => {
+      const photoA = qualifiedPhotos.find(p => p.id === battle.photoA);
+      const photoB = qualifiedPhotos.find(p => p.id === battle.photoB);
+      
+      if (!photoA || !photoB) return;
+      
+      const winnerId = battle.winner;
+      const photoAWon = winnerId === photoA.id;
+      const photoBWon = winnerId === photoB.id;
+      const isCurrentBattle = currentMatch && 
+        ((currentMatch.photoA.id === photoA.id && currentMatch.photoB.id === photoB.id) ||
+         (currentMatch.photoA.id === photoB.id && currentMatch.photoB.id === photoA.id));
+      
+      const statsA = photoStats[photoA.id];
+      const statsB = photoStats[photoB.id];
+      
+      // Container único para cada batalha
+      html += `<div class="bracket-battle-container ${isCurrentBattle ? 'current' : ''} decided ${round.type}" data-battle-id="${battle.photoA}-${battle.photoB}">`;
+      
+      // Obter scores e tiers
+      const scoreA = contestState.scoresAndTiers[photoA.id] || { score: 50, tier: TIERS[4] };
+      const scoreB = contestState.scoresAndTiers[photoB.id] || { score: 50, tier: TIERS[4] };
+      
+      // Slot Foto A
+      html += `<div class="bracket-slot ${photoAWon ? 'winner' : 'loser'}">`;
+      html += `<img src="${photoA.thumb}" alt="Foto A" class="bracket-thumb">`;
+      html += `<div class="bracket-info">`;
+      html += `<div class="tier-badge tier-badge-small">`;
+      html += `<div class="tier-icon">${scoreA.tier.icon}</div>`;
+      html += `<div class="tier-score">${scoreA.score}/100</div>`;
+      html += `<div class="tier-label">${scoreA.tier.label}</div>`;
+      html += `</div>`;
+      if (photoAWon) html += '<span class="bracket-check">✓</span>';
+      html += `</div></div>`;
+      
+      // Linha horizontal entre fotos
+      html += `<div class="bracket-line-h"></div>`;
+      
+      // Slot Foto B
+      html += `<div class="bracket-slot ${photoBWon ? 'winner' : 'loser'}">`;
+      html += `<img src="${photoB.thumb}" alt="Foto B" class="bracket-thumb">`;
+      html += `<div class="bracket-info">`;
+      html += `<div class="tier-badge tier-badge-small">`;
+      html += `<div class="tier-icon">${scoreB.tier.icon}</div>`;
+      html += `<div class="tier-score">${scoreB.score}/100</div>`;
+      html += `<div class="tier-label">${scoreB.tier.label}</div>`;
+      html += `</div>`;
+      if (photoBWon) html += '<span class="bracket-check">✓</span>';
+      html += `</div></div>`;
+      
+      // Flecha para próxima rodada (sempre mostrar para vencedor)
+      if (photoAWon && roundIdx < rounds.length - 1) {
+        html += `<div class="bracket-arrow" data-winner="${photoA.id}" title="Vencedor avança para próxima rodada"></div>`;
+      } else if (photoBWon && roundIdx < rounds.length - 1) {
+        html += `<div class="bracket-arrow" data-winner="${photoB.id}" title="Vencedor avança para próxima rodada"></div>`;
+      }
+      
+      html += `</div>`; // Fecha bracket-battle-container
+    });
+    
+    html += `</div></div>`;
+  });
+  
+  // Mostrar confronto atual se ainda não foi adicionado
+  if (currentMatch && !battleHistory.some(b => 
+    (b.photoA === currentMatch.photoA.id && b.photoB === currentMatch.photoB.id) ||
+    (b.photoA === currentMatch.photoB.id && b.photoB === currentMatch.photoA.id)
+  )) {
+    const photoA = currentMatch.photoA;
+    const photoB = currentMatch.photoB;
+    const statsA = photoStats[photoA.id];
+    const statsB = photoStats[photoB.id];
+    
+    html += `<div class="bracket-column active">`;
+    html += `<div class="bracket-column-label">Próxima Batalha</div>`;
+    html += `<div class="bracket-column-content">`;
+    html += `<div class="bracket-battle-container current">`;
+    
+    html += `<div class="bracket-slot">`;
+    html += `<img src="${photoA.thumb}" alt="Foto A" class="bracket-thumb">`;
+    html += `<div class="bracket-info">`;
+    html += `<div class="bracket-elo">${Math.round(eloScores[photoA.id] || 1500)}</div>`;
+    html += `</div></div>`;
+    
+    html += `<div class="bracket-line-h"></div>`;
+    
+    html += `<div class="bracket-slot">`;
+    html += `<img src="${photoB.thumb}" alt="Foto B" class="bracket-thumb">`;
+    html += `<div class="bracket-info">`;
+    html += `<div class="bracket-elo">${Math.round(eloScores[photoB.id] || 1500)}</div>`;
+    html += `</div></div>`;
+    
+    html += `</div></div></div>`;
+  }
+  
+  html += '</div>';
+  return html;
+}
+
+/**
+ * Renderiza interface de confronto (suporta qualifying e bracket)
+ */
+async function renderBattle() {
+  if (battleModule) {
+    return battleModule.renderBattle();
+  }
+}
+
+/**
+ * Renderiza batalha da fase classificatória
+ */
+async function renderQualifyingBattle() {
+  if (battleModule) {
+    return battleModule.renderQualifyingBattle();
+  }
+}
+
+
+/**
+ * Renderiza ranking dinâmico
+ */
+function renderDynamicRanking(photos, photoStats) {
+  // Ranking baseado apenas em Elo (sistema pairwise)
+  if (!contestState) return '';
+  
+  const { eloScores, scoresAndTiers } = contestState;
+  
+  const ranked = [...photos]
+    .map(p => ({ 
+      ...p, 
+      stats: photoStats[p.id],
+      scoreData: scoresAndTiers[p.id] || { score: 50, tier: TIERS[4] },
+      elo: eloScores[p.id] || 1500
+    }))
+    .sort((a, b) => {
+      // Ordenar por Elo (maior = melhor)
+      if (b.elo !== a.elo) return b.elo - a.elo;
+      return a.id.localeCompare(b.id);
+    });
+  
+  return ranked.map((photo, index) => {
+    const { wins, losses, rank } = photo.stats;
+    const { score, tier } = photo.scoreData;
+    return `
+      <div class="ranking-item ${index < 3 ? 'top-' + (index + 1) : ''}">
+        <span class="ranking-position">#${rank}</span>
+        <img src="${photo.thumb}" alt="Foto" class="ranking-thumb">
+        <div class="ranking-details">
+          <div class="tier-badge tier-badge-small">
+            <div class="tier-icon">${tier.icon}</div>
+            <div class="tier-score">${score}/100</div>
+            <div class="tier-label">${tier.label}</div>
+          </div>
+          <div class="ranking-record">${wins}W-${losses}L</div>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+/**
+ * Toggle overlay genérico
+ */
+function toggleOverlay(overlayId) {
+  const overlay = $(overlayId);
+  if (!overlay) return;
+  
+  const isHidden = overlay.getAttribute('aria-hidden') === 'true';
+  overlay.setAttribute('aria-hidden', isHidden ? 'false' : 'true');
+  
+  if (!isHidden && overlayId === 'heatmapOverlay') {
+    // Atualizar heatmap
+    const container = $('#heatmapContent');
+    if (container) {
+      container.innerHTML = renderHeatmap();
+    }
+  }
+}
+
+/**
+ * Renderiza overlay de ranking completo
+ */
+function renderRankingOverlay() {
+  if (!contestState || contestState.phase !== 'qualifying') return '';
+  
+  // Sistema pairwise: usar apenas qualifiedPhotos
+  const photos = contestState.qualifiedPhotos;
+  
+  const { eloScores, battleHistory, scoresAndTiers } = contestState;
+  const photoStats = calculatePhotoStatsState(photos, eloScores, battleHistory, contestState, contestState.photoStats);
+  contestState.photoStats = photoStats;
+  
+  // Ranking baseado apenas em Elo (sistema pairwise)
+  const ranked = [...photos]
+    .map(p => ({ 
+      ...p, 
+      stats: photoStats[p.id],
+      scoreData: scoresAndTiers[p.id] || { score: 50, tier: TIERS[4] }
+    }))
+    .sort((a, b) => {
+      // Ordenar por Elo (maior = melhor)
+      const eloA = eloScores[a.id] || 1500;
+      const eloB = eloScores[b.id] || 1500;
+      if (eloB !== eloA) return eloB - eloA;
+      return a.id.localeCompare(b.id);
+    });
+  
+  return `
+    <div class="contest-overlay" id="rankingOverlay" aria-hidden="true">
+      <div class="overlay-header">
+        <h3>Ranking Completo</h3>
+        <button class="overlay-close" onclick="toggleOverlay('rankingOverlay')" aria-label="Fechar">&times;</button>
+      </div>
+      <div class="overlay-content">
+        <div class="full-ranking-list">
+          ${ranked.map((photo, idx) => {
+            const { score, tier } = photo.scoreData;
+            const recentBattles = battleHistory
+              .filter(b => b.photoA === photo.id || b.photoB === photo.id)
+              .slice(-3);
+            const scoreChange = recentBattles.length > 0 
+              ? recentBattles.reduce((sum, b) => {
+                  const isWinner = b.winner === photo.id;
+                  return sum + (isWinner ? (b.eloChange?.winner || 0) : (b.eloChange?.loser || 0));
+                }, 0)
+              : 0;
+            
+            const displayRank = photo.stats?.rank || (idx + 1);
+            
+            return `
+            <div class="full-ranking-item ${idx < 3 ? 'top-' + (idx + 1) : ''}" data-photo-id="${photo.id}">
+              <span class="ranking-position-large">#${displayRank}</span>
+              <img src="${photo.thumb}" alt="Foto" class="ranking-thumb-large">
+              <div class="ranking-details-large">
+                <div class="tier-badge tier-badge-large">
+                  <div class="tier-icon">${tier.icon}</div>
+                  <div class="tier-score">${score}/100</div>
+                  <div class="tier-label">${tier.label}</div>
+                </div>
+                <div class="ranking-record-large">${photo.stats.wins}W - ${photo.stats.losses}L</div>
+                ${recentBattles.length > 0 ? `<div class="ranking-change">${scoreChange > 0 ? '+' : ''}${Math.round(scoreChange)} score</div>` : ''}
+              </div>
+              <button class="btn-view-details" data-photo-id="${photo.id}" onclick="showPhotoDetails('${photo.id}')">
+                Ver Detalhes
+              </button>
+            </div>
+          `;
+          }).join('')}
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+/**
+ * Renderiza prévia do bracket (antes de fechar classificatória)
+ */
+function renderBracketPreview() {
+  // Função legada: não mais usada no sistema pairwise
+  // Mantida apenas para compatibilidade com código que pode chamá-la
+  return '<p class="muted">Prévia de bracket não disponível no sistema pairwise atual.</p>';
+}
+
+/**
+ * Renderiza heatmap de confrontos
+ */
+function renderHeatmap() {
+  if (!contestState) {
+    return '<p class="muted">Nenhum contest disponível.</p>';
+  }
+  
+  const { qualifiedPhotos, battleHistory } = contestState;
+  
+  if (!qualifiedPhotos || qualifiedPhotos.length === 0) {
+    return '<p class="muted">Nenhuma foto participante.</p>';
+  }
+  
+  if (!battleHistory || battleHistory.length === 0) {
+    return '<p class="muted">Nenhuma batalha registrada ainda.</p>';
+  }
+  
+  // Criar matriz de confrontos
+  const matrix = {};
+  qualifiedPhotos.forEach(p => {
+    matrix[p.id] = {};
+    qualifiedPhotos.forEach(p2 => {
+      if (p.id !== p2.id) {
+        matrix[p.id][p2.id] = 0; // 0 = não batalharam
+      }
+    });
+  });
+  
+  // Preencher com histórico
+  battleHistory.forEach(b => {
+    if (matrix[b.photoA] && matrix[b.photoA][b.photoB] !== undefined) {
+      matrix[b.photoA][b.photoB] = 1; // 1 = batalharam
+      matrix[b.photoB][b.photoA] = 1;
+    }
+  });
+  
+  let html = '<div class="heatmap-container">';
+  html += '<div class="heatmap-legend">';
+  html += '<span class="legend-item"><span class="legend-color" style="background: rgba(61, 220, 151, 0.3)"></span> Batalharam</span>';
+  html += '<span class="legend-item"><span class="legend-color" style="background: rgba(255, 255, 255, 0.05)"></span> Não batalharam</span>';
+  html += '</div>';
+  
+  html += '<div class="heatmap-table">';
+  html += '<div class="heatmap-row heatmap-header-row">';
+  html += '<div class="heatmap-cell heatmap-corner"></div>';
+  qualifiedPhotos.forEach(p => {
+    html += `<div class="heatmap-cell heatmap-header-cell" title="${p.id}">`;
+    html += `<img src="${p.thumb}" class="heatmap-thumb-small" data-photo-id="${p.id}" style="cursor: pointer;" alt="Foto ${p.id}">`;
+    html += `</div>`;
+  });
+  html += '</div>';
+  
+  qualifiedPhotos.forEach((photoA, idxA) => {
+    html += '<div class="heatmap-row">';
+    html += `<div class="heatmap-cell heatmap-header-cell" title="${photoA.id}">`;
+    html += `<img src="${photoA.thumb}" class="heatmap-thumb-small" data-photo-id="${photoA.id}" style="cursor: pointer;" alt="Foto ${photoA.id}">`;
+    html += `</div>`;
+    
+    qualifiedPhotos.forEach((photoB, idxB) => {
+      if (photoA.id === photoB.id) {
+        html += '<div class="heatmap-cell heatmap-diagonal"></div>';
+      } else {
+        const hasBattled = matrix[photoA.id][photoB.id] === 1;
+        html += `<div class="heatmap-cell ${hasBattled ? 'heatmap-battled' : 'heatmap-not-battled'}" 
+                      title="${photoA.id} vs ${photoB.id}: ${hasBattled ? 'Batalharam' : 'Não batalharam'}">
+                  ${hasBattled ? '✓' : ''}
+                </div>`;
+      }
+    });
+    
+    html += '</div>';
+  });
+  
+  html += '</div></div>';
+  return html;
+}
+
+/**
+ * Renderiza overlay do heatmap
+ */
+function renderHeatmapOverlay() {
+  if (!contestState || contestState.phase !== 'qualifying') return '';
+  
+  return `
+    <div class="contest-overlay" id="heatmapOverlay" aria-hidden="true">
+      <div class="overlay-header">
+        <h3>Heatmap de Confrontos</h3>
+        <button class="overlay-close" onclick="toggleOverlay('heatmapOverlay')" aria-label="Fechar">&times;</button>
+      </div>
+      <div class="overlay-content" id="heatmapContent">
+        ${renderHeatmap()}
+      </div>
+    </div>
+  `;
+}
+
+/**
+ * Renderiza overlay de prévia do bracket
+ */
+function renderBracketPreviewOverlay() {
+  if (!contestState || contestState.phase !== 'qualifying') return '';
+  
+  return `
+    <div class="contest-overlay" id="bracketPreviewOverlay" aria-hidden="true">
+      <div class="overlay-header">
+        <h3>Prévia do Bracket Final</h3>
+        <button class="overlay-close" onclick="toggleOverlay('bracketPreviewOverlay')" aria-label="Fechar">&times;</button>
+      </div>
+      <div class="overlay-content" id="bracketPreviewContent">
+        ${renderBracketPreview()}
+      </div>
+    </div>
+  `;
+}
+
+/**
+ * Renderiza árvore visual do bracket (fase bracket)
+ */
+function renderBracketTree() {
+  // Função legada: não mais usada no sistema pairwise
+  // Mantida apenas para compatibilidade com código que pode chamá-la
+  return '<p class="muted">Árvore de bracket não disponível no sistema pairwise atual.</p>';
+}
+
+/**
+ * Renderiza overlay da árvore do bracket
+ */
+function renderBracketTreeOverlay() {
+  if (!contestState || contestState.phase !== 'bracket') return '';
+  
+  return `
+    <div class="contest-overlay" id="bracketTreeOverlay" aria-hidden="true">
+      <div class="overlay-header">
+        <h3>Bracket Final - Árvore Completa</h3>
+        <button class="overlay-close" onclick="toggleOverlay('bracketTreeOverlay')" aria-label="Fechar">&times;</button>
+      </div>
+      <div class="overlay-content" id="bracketTreeContent">
+        ${renderBracketTree()}
+      </div>
+    </div>
+  `;
+}
+
+/**
+ * Mostra detalhes de uma foto (gráfico Elo, timeline, etc)
+ * Função global para ser chamada via onclick
+ */
+window.showPhotoDetails = function(photoId) {
+  if (!contestState) return;
+  
+  const photo = contestState.qualifiedPhotos.find(p => p.id === photoId);
+  if (!photo) return;
+  
+  const { eloScores, battleHistory, qualifying, scoresAndTiers, eloRange } = contestState;
+  const eloHistory = qualifying?.eloHistory?.[photoId] || [];
+  const photoBattles = battleHistory.filter(b => 
+    b.photoA === photoId || b.photoB === photoId
+  );
+  
+  const photoStats = calculatePhotoStatsState([photo], eloScores, battleHistory, contestState, contestState.photoStats);
+  const stats = photoStats[photoId];
+  const scoreData = scoresAndTiers[photoId] || { score: 50, tier: TIERS[4] };
+  
+  // Converter eloHistory para scoreHistory
+  const scoreHistory = eloHistory.map(h => ({
+    score: normalizeEloToScore(h.elo, eloRange.min, eloRange.max),
+    timestamp: h.timestamp,
+    battleId: h.battleId
+  }));
+  
+  // Criar modal de detalhes
+  const modal = document.createElement('div');
+  modal.className = 'photo-details-modal';
+  modal.innerHTML = `
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>Detalhes da Foto</h3>
+        <button class="modal-close" onclick="this.closest('.photo-details-modal').remove()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="photo-details-main">
+          <img src="${photo.thumb}" alt="Foto" class="details-main-image">
+          <div class="details-stats">
+            <div class="stat-item">
+              <strong>Score:</strong> ${scoreData.score}/100 ${scoreData.tier.icon}
+            </div>
+            <div class="stat-item">
+              <strong>Tier:</strong> ${scoreData.tier.label}
+            </div>
+            <div class="stat-item">
+              <strong>Ranking:</strong> #${stats?.rank || 'N/A'}
+            </div>
+            <div class="stat-item">
+              <strong>Recorde:</strong> ${stats?.wins || 0}W - ${stats?.losses || 0}L
+            </div>
+          </div>
+        </div>
+        
+        <div class="details-section">
+          <h4>Evolução do Score</h4>
+          <canvas id="scoreChart-${photoId}" width="800" height="200"></canvas>
+        </div>
+        
+        <div class="details-section">
+          <h4>Histórico de Batalhas</h4>
+          <div class="battle-timeline">
+            ${renderBattleTimeline(photoId, photoBattles, eloScores, scoresAndTiers, eloRange)}
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+  
+  document.body.appendChild(modal);
+  
+  // Renderizar gráfico
+  setTimeout(() => {
+    renderScoreChart(`scoreChart-${photoId}`, scoreHistory);
+  }, 100);
+}
+
+/**
+ * Renderiza gráfico de evolução do Score (0-100)
+ */
+function renderScoreChart(canvasId, scoreHistory) {
+  const canvas = $(canvasId);
+  if (!canvas) return;
+  
+  // Se histórico insuficiente, mostrar mensagem
+  if (scoreHistory.length < 2) {
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+    ctx.font = '16px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('Histórico insuficiente para gráfico', canvas.width / 2, canvas.height / 2);
+    return;
+  }
+  
+  const ctx = canvas.getContext('2d');
+  const width = canvas.width;
+  const height = canvas.height;
+  const padding = 40;
+  
+  // Limpar canvas
+  ctx.clearRect(0, 0, width, height);
+  
+  // Calcular escala (sempre 0-100)
+  const minScore = 0;
+  const maxScore = 100;
+  const range = maxScore - minScore;
+  const scaleY = (height - padding * 2) / range;
+  const scaleX = (width - padding * 2) / (scoreHistory.length - 1);
+  
+  // Desenhar eixos
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(padding, padding);
+  ctx.lineTo(padding, height - padding);
+  ctx.lineTo(width - padding, height - padding);
+  ctx.stroke();
+  
+  // Desenhar linha do gráfico
+  ctx.strokeStyle = '#6aa3ff';
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  
+  scoreHistory.forEach((point, idx) => {
+    const x = padding + idx * scaleX;
+    const y = height - padding - (point.score - minScore) * scaleY;
+    
+    if (idx === 0) {
+      ctx.moveTo(x, y);
+    } else {
+      ctx.lineTo(x, y);
+    }
+  });
+  
+  ctx.stroke();
+  
+  // Desenhar pontos
+  ctx.fillStyle = '#6aa3ff';
+  scoreHistory.forEach((point, idx) => {
+    const x = padding + idx * scaleX;
+    const y = height - padding - (point.score - minScore) * scaleY;
+    
+    ctx.beginPath();
+    ctx.arc(x, y, 4, 0, Math.PI * 2);
+    ctx.fill();
+  });
+  
+  // Labels do eixo Y (0, 25, 50, 75, 100)
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+  ctx.font = '10px sans-serif';
+  ctx.textAlign = 'right';
+  [0, 25, 50, 75, 100].forEach(score => {
+    const y = height - padding - (score - minScore) * scaleY;
+    ctx.fillText(score.toString(), padding - 5, y + 3);
+  });
+  
+  // Label do eixo X
+  ctx.fillStyle = '#fff';
+  ctx.font = '12px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('Score (0-100)', width / 2, height - 10);
+}
+
+/**
+ * Renderiza timeline de batalhas
+ */
+function renderBattleTimeline(photoId, battles, eloScores, scoresAndTiers = null, eloRange = null) {
+  // Ordenar por timestamp (mais antiga → mais recente)
+  const sortedBattles = [...battles].sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+  
+  return sortedBattles.map((battle, idx) => {
+    const opponentId = battle.photoA === photoId ? battle.photoB : battle.photoA;
+    const opponent = contestState.qualifiedPhotos.find(p => p.id === opponentId);
+    const won = battle.winner === photoId;
+    
+    // Calcular variação de score
+    let scoreBefore = 50;
+    let scoreAfter = 50;
+    let scoreChange = 0;
+    
+    if (eloRange && scoresAndTiers && battle.eloChange) {
+      // Calcular Elo antes e depois
+      const eloChange = won 
+        ? (battle.eloChange?.winner || 0)
+        : (battle.eloChange?.loser || 0);
+      const eloBefore = (eloScores[photoId] || 1500) - eloChange;
+      const eloAfter = eloScores[photoId] || 1500;
+      
+      // Converter para score
+      scoreBefore = normalizeEloToScore(eloBefore, eloRange.min, eloRange.max);
+      scoreAfter = normalizeEloToScore(eloAfter, eloRange.min, eloRange.max);
+      scoreChange = scoreAfter - scoreBefore;
+    } else {
+      // Usar score atual
+      const currentScore = scoresAndTiers?.[photoId]?.score || 50;
+      scoreAfter = currentScore;
+      scoreBefore = currentScore;
+    }
+    
+    const tierAfter = getTierFromScore(scoreAfter);
+    
+    return `
+      <div class="timeline-item ${won ? 'won' : 'lost'}">
+        <div class="timeline-marker"></div>
+        <div class="timeline-content">
+          <div class="timeline-header">
+            <span class="timeline-battle-num">Batalha ${idx + 1}</span>
+            <span class="timeline-result ${won ? 'win' : 'loss'}">${won ? 'Vitória' : 'Derrota'}</span>
+          </div>
+          <div class="timeline-opponent">
+            <img src="${opponent?.thumb || ''}" alt="Oponente" class="timeline-opponent-thumb">
+            <span>vs ${opponentId}</span>
+          </div>
+          <div class="timeline-score">
+            <span class="score-before">${scoreBefore}/100</span>
+            <span class="score-arrow">→</span>
+            <span class="score-after">${scoreAfter}/100 ${tierAfter.icon}</span>
+            <span class="score-change ${scoreChange > 0 ? 'positive' : 'negative'}">
+              (${scoreChange > 0 ? '+' : ''}${Math.round(scoreChange)})
+            </span>
+          </div>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+// Variável para rastrear se o listener de teclado já foi adicionado
+// Gerenciado pelo módulo contest-battle.js
+let battleKeysHandler = null;
+
+/**
+ * Handler de atalhos de teclado na batalha
+ */
+function handleBattleKeys(e) {
+  if (battleModule) {
+    return battleModule.handleBattleKeys(e);
+  }
+}
+
+/**
+ * Registra vencedor de um confronto
+ */
+async function chooseBattleWinner(winner) {
+  if (battleModule) {
+    return battleModule.chooseBattleWinner(winner);
+  }
+}
+
+/**
+ * Processa batalha da fase classificatória
+ */
+async function handleQualifyingBattle(winner) {
+  if (battleModule) {
+    return battleModule.handleQualifyingBattle(winner);
+  }
+}
+
+
+
+/**
+ * Finaliza contest e vai para resultados
+ */
+function finishContest() {
+  const context = {
+    contestState: { current: contestState },
+    toast
+  };
+  finishContestManager(context);
+  contestState = context.contestState.current;
+}
+
+/**
+ * Confirma cancelamento do contest
+ */
+function confirmCancelContest() {
+  openConfirm({
+    title: 'Cancelar Contest?',
+    message: 'Todo o progresso será perdido. Deseja cancelar?',
+    confirmText: 'Cancelar Contest',
+    onConfirm: () => {
+      contestState = null;
+      saveContestState();
+      renderContestView();
+      toast('Contest cancelado.');
+    }
+  });
+}
+
+/**
+ * Salva estado do contest no localStorage
+ */
+function saveContestState() {
+  const context = {
+    contestState: { current: contestState }
+  };
+  saveContestStateManager(context);
+}
+
+/**
+ * Carrega estado do contest do localStorage
+ */
+function loadContestState() {
+  const context = {
+    contestState: { current: contestState },
+    allPhotos
+  };
+  loadContestStateManager(context);
+  contestState = context.contestState.current;
+}
+
+/**
+ * Inicializa aba "Resultados"
+ */
+function initResultsView() {
+  window.addEventListener('hashchange', () => {
+    if (location.hash === '#/results') {
+      renderResultsView();
+    }
+  });
+  
+  if (location.hash === '#/results') {
+    setTimeout(() => renderResultsView(), 100);
+  }
+}
+
+/**
+ * Renderiza aba "Resultados"
+ */
+async function renderResultsView() {
+  // Carregar fotos atualizadas PRIMEIRO
+  allPhotos = await getAllPhotos();
+  
+  // Carregar estado do contest
+  loadContestState();
+  
+  if (resultsModule) {
+    return resultsModule.renderResultsView();
+  }
+}
+
+/**
+ * Renderiza histórico completo de batalhas em brackets para a tela de resultados
+ */
+function renderBracketHistory() {
+  if (resultsModule) {
+    return resultsModule.renderBracketHistory();
+  }
+  return '<p class="muted">Módulo de resultados não inicializado.</p>';
+}
+
+
+/**
+ * Confirma recomeço do contest
+ */
+function confirmRestartContest() {
+  if (resultsModule) {
+    return resultsModule.confirmRestartContest();
   }
 }
 
@@ -1741,17 +3141,15 @@ async function renderRateView() {
     }
   }
   
-  // Garantir índice válido
   if (rateViewIndex < 0) rateViewIndex = 0;
   if (rateViewIndex >= rateViewPhotos.length) rateViewIndex = rateViewPhotos.length - 1;
   
   const currentPhoto = rateViewPhotos[rateViewIndex];
-  const totalPhotos = allVisiblePhotos.length; // Total geral (não filtrado)
-  const ratedCount = allVisiblePhotos.filter(p => p.rating > 0).length; // Total avaliadas (geral)
+  const totalPhotos = allVisiblePhotos.length;
+  const ratedCount = allVisiblePhotos.filter(p => p.rating > 0).length;
   const currentPosition = rateViewIndex + 1;
   const listSize = rateViewPhotos.length;
   
-  // Renderizar interface
   container.innerHTML = `
     <div class="rate-container">
       <div class="rate-progress">
@@ -1928,7 +3326,7 @@ async function rateCurrentPhoto(rating) {
 }
 
 // ========================================
-//  SPRINT 3: RATING NO VIEWER
+// ===== RATING NO VIEWER =====
 // ========================================
 
 /**

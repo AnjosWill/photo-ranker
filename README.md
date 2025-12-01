@@ -57,7 +57,7 @@ npx http-server -p 5500
 - Hierarquia de z-index correta
 - Ícones semânticos (↺ para reverter, ⊗ para grade)
 
-### ✅ Sprint 3 (v0.3.0) — **Atual**
+### ✅ Sprint 3 (v0.3.0)
 **Sistema de Avaliação por Estrelas:**
 - Componente interativo de 5 estrelas (hover, click, touch, teclado)
 - Integração no grid (aparece ao passar mouse, sempre visível se avaliada)
@@ -106,6 +106,40 @@ npx http-server -p 5500
 - Layout responsivo sem scroll na aba "Avaliar"
 - Grid 1 coluna em telas < 400px (evita vazamento de estrelas)
 
+### ✅ Sprint 4 (v0.4.0) — **Atual**
+**Contest Mode - Sistema Elo-Based Non-Repeat Pairwise Ranking:**
+- Interface de confronto lado a lado (A vs B)
+- Sistema pairwise: cada par de fotos batalha apenas uma vez
+- Total de confrontos: n*(n-1)/2 (todas as combinações possíveis)
+- Pareamento híbrido: Elo similar (60%) + balanceamento de batalhas (40%)
+- Finalização automática quando todas as combinações são esgotadas
+- Algoritmo Elo (FIDE padrão, K=32) para ranking e pontuação
+- Progresso detalhado: "Batalha X de Y (Z pares únicos restantes)"
+- Ranking dinâmico ao lado mostrando posições atualizadas
+- Interação: click, touch, atalhos (1/←, 2/→, Esc)
+- Modal de confirmação para "Refazer Contest"
+
+**Tela de Resultados:**
+- Card do campeão com animações (🏆 bounce, gradient)
+- Ranking completo ordenado por Elo final (não W-L record)
+- Estatísticas: Elo final, vitórias, derrotas, média de batalhas por foto
+- Heatmap de confrontos (matriz visual, clicável para abrir fotos no viewer)
+- Histórico cronológico de confrontos (visualização compacta em 2 colunas, clicável)
+- Botão "Recomeçar Contest" (com modal de confirmação)
+
+**Persistência:**
+- Estado salvo no localStorage (continuar de onde parou)
+- Histórico completo de batalhas (cronológico)
+- Elo scores atualizados em tempo real
+- Migração automática de estados antigos (bracket → pairwise)
+
+**UX/A11Y:**
+- Feedback visual: borda verde ao vencer, escala, toasts
+- Layout responsivo (lado a lado → vertical em mobile)
+- Navegação por teclado completa
+- Delay 800ms entre confrontos para ver feedback
+- Miniaturas clicáveis no heatmap e histórico para abrir viewer
+
 ## 🎯 Atalhos de Teclado
 
 | Tecla | Ação |
@@ -116,9 +150,11 @@ npx http-server -p 5500
 | **0** | Remover avaliação |
 | **Esc** | Fechar viewer/modal ou sair do modo seleção |
 | **Delete/D** | Remover foto (no viewer) |
-| **←/→** | Navegar entre fotos (viewer ou aba "Avaliar") |
+| **←/→** | Navegar entre fotos (viewer ou aba "Avaliar") / Foto A/B (Contest) |
 | **+/-** | Zoom in/out (viewer) |
 | **Shift+0** | Resetar zoom (viewer) |
+| **1** | Escolher Foto A (Contest) |
+| **2** | Escolher Foto B (Contest) |
 
 ## 📋 Estrutura do Projeto
 
@@ -134,15 +170,21 @@ photo-ranker/
 │   │   ├── image-utils.js         # Processamento de imagens
 │   │   ├── cropper.js             # Modal de corte 2×2
 │   │   ├── quad-worker.js         # Worker de detecção
-│   │   └── rating.js              # Componente de estrelas
+│   │   ├── rating.js              # Componente de estrelas
+│   │   └── elo.js                 # Sistema de ranking Elo
 │   └── styles/
 │       ├── base.css               # Layout e tokens
 │       └── components.css         # Componentes e microinterações
 ├── package.json
 ├── PROJECT_PLAN.md                # Documentação técnica
 ├── CHANGELOG.md                   # Histórico de versões
-├── SPRINT3_PLAN.md                # Planejamento Sprint 3
-└── SPRINT3_TESTS.md               # Casos de teste
+├── COMMIT_SPRINT4.md              # Guia de commit Sprint 4
+├── SPRINTS_4_5_STRATEGY.md        # Estratégia Sprints 4 e 5
+└── docs/                          # Documentação técnica detalhada
+    ├── ELO_ANALYSIS.md            # Análise do sistema Elo
+    ├── REALTIME_UPDATES.md        # Mapeamento de atualizações em tempo real
+    ├── ROBUSTNESS_ISSUES.md       # Problemas de robustez identificados
+    └── sprint-4/                  # Documentação de planejamento Sprint 4
 
 ## 🎓 Tecnologias
 
@@ -158,12 +200,11 @@ photo-ranker/
 - ✅ **Sprint 1** (v0.1.0): Upload, grid, viewer, multi-select
 - ✅ **Sprint 2** (v0.2.0): Detecção 2×2, cropper, zoom/pan
 - ✅ **Sprint 3** (v0.3.0): Rating, filtros, ordenação, aba "Avaliar"
-- 🔜 **Sprint 4**: Contest mode + múltiplos projetos
-- 🔜 **Sprint 5**: Exportação/importação + PWA
+- ✅ **Sprint 4** (v0.4.0): Contest Mode (sistema pairwise + Elo + resultados)
+- 🔜 **Sprint 5**: Múltiplos projetos + exportação/importação + PWA
 
 ## 📝 Próximos passos
-- Sprint 4: contest mode (Elo + mata-mata) + múltiplos projetos.
-- Sprint 5: exportação/importação + PWA + refinamentos.
+- Sprint 5: Múltiplos projetos + exportação/importação + PWA + refinamentos.
 
 ## 📄 Licença
 

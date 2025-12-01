@@ -56,6 +56,26 @@ body {
   top: 0;
   z-index: 10;
 }
+
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--gap-3);
+}
+
+.app-header-brand {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-2);
+}
+
+.app-logo {
+  height: 80px;
+  width: auto;
+  object-fit: contain;
+}
+
 .app-footer {
   position: static;
   opacity: 0.8;
@@ -66,6 +86,26 @@ body {
   margin: 0 auto;
   max-width: var(--max-w);
   padding: var(--gap-3);
+}
+
+/* Tela de Contest: ocupar todo espaço disponível - quebrar limitações do container */
+.app-main [data-route="contest"] {
+  margin-left: calc(-1 * var(--gap-3));
+  margin-right: calc(-1 * var(--gap-3));
+  padding: 0;
+  max-width: none !important;
+  width: 100vw; /* Largura total da viewport */
+  position: relative;
+  left: 50%;
+  right: 50%;
+  margin-left: -50vw;
+  margin-right: -50vw;
+}
+
+.app-main [data-route="contest"] .contest-view {
+  padding: var(--gap-4);
+  max-width: 100%;
+  margin: 0 auto;
 }
 
 /* Navegação (tabs) */
@@ -246,6 +286,27 @@ body {
 }
 .muted {
   color: var(--muted);
+}
+
+/* Responsivo - Header */
+@media (max-width: 768px) {
+  .app-header {
+    flex-wrap: wrap;
+    gap: var(--gap-2);
+  }
+  
+  .app-header-brand {
+    gap: var(--gap-1);
+  }
+  
+  .app-logo {
+    height: 60px;
+  }
+  
+  .tabs {
+    width: 100%;
+    margin-top: var(--gap-1);
+  }
 }
 
 .sr-only {

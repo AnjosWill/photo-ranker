@@ -10,7 +10,9 @@
   </head>
   <body>
     <header class="app-header">
-      <h1>Photo Ranker</h1>
+      <div class="app-header-brand">
+        <img src="./images/logo.png" alt="Photo Ranker" class="app-logo" />
+      </div>
       <nav class="tabs" role="tablist" aria-label="Navegação principal">
         <a href="#/upload" role="tab" aria-selected="true">Upload</a>
         <a href="#/rate" role="tab" aria-selected="false">Avaliar</a>
@@ -114,8 +116,8 @@
         aria-labelledby="contest-title"
       >
         <h2 id="contest-title" class="sr-only">Contest</h2>
-        <div class="center">
-          <p class="muted">Em breve: duelos lado a lado (A × B) e torneio.</p>
+        <div id="contestView" class="contest-view">
+          <!-- Estado inicial (será renderizado via JS) -->
         </div>
       </section>
 
@@ -126,8 +128,8 @@
         aria-labelledby="results-title"
       >
         <h2 id="results-title" class="sr-only">Resultados</h2>
-        <div class="center">
-          <p class="muted">Em breve: campeã, ranking e exportações.</p>
+        <div id="resultsView" class="results-view">
+          <!-- Resultados serão renderizados via JS -->
         </div>
       </section>
     </main>
