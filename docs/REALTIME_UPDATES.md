@@ -2,7 +2,7 @@
 
 ## Visão Geral
 
-O sistema apresenta resultados em **tempo real** durante a fase classificatória, atualizando automaticamente após cada voto. Na fase bracket, atualiza após cada batalha.
+O sistema apresenta resultados em **tempo real** durante o contest pairwise, atualizando automaticamente após cada batalha.
 
 ---
 
@@ -54,91 +54,49 @@ eloA = eloScores[photoA.id] || 1500
 
 ---
 
-## 3. Ranking Completo (Overlay)
+## 3. Ranking Completo (Overlay - Legado)
 
-**Localização:** Modal overlay (botão "📊 Ranking")
-**Função:** `renderRankingOverlay()` linha 2663
+**Nota:** Este overlay foi removido da aba Contest. O ranking completo agora está disponível apenas na aba Resultados após o contest finalizar.
+
+**Localização:** (Removido - não mais disponível durante contest)
+**Função:** `renderRankingOverlay()` (mantida apenas para compatibilidade)
 **Quando Atualiza:**
-- ❌ **NÃO é tempo real:** Apenas ao abrir overlay
-- ❌ **Não atualiza:** Se overlay estiver aberto durante votos
+- ❌ **Removido:** Não mais usado no sistema pairwise atual
 
-**Dados Mostrados:**
-- Lista completa ordenada por Power Level
-- Posição (#1, #2, etc)
-- Thumbnail maior (80x80px)
-- Power Level completo
-- Recorde completo (W-L)
-- Botão "Ver Detalhes" para cada foto
-
-**Fonte de Dados:**
-```javascript
-calculatePhotoStats(qualifiedPhotos, eloScores, battleHistory)
-→ ordena por Elo
-```
-
-**Como Abrir:**
-- Botão "📊 Ranking" na barra de ações
-- Atalho: (não há)
-
-**Problema:** Não atualiza em tempo real enquanto aberto
+**Alternativa:**
+- Use o ranking dinâmico na sidebar durante o contest
+- Acesse a aba "Resultados" após finalizar para ver ranking completo
 
 ---
 
-## 4. Heatmap de Confrontos (Overlay)
+## 4. Heatmap de Confrontos (Aba Resultados)
 
-**Localização:** Modal overlay (botão "🔥 Heatmap")
-**Função:** `renderHeatmap()` linha 2742
+**Nota:** O heatmap foi movido para a aba Resultados e só é exibido após o contest finalizar.
+
+**Localização:** Aba "Resultados" após contest finalizado
+**Função:** `renderHeatmap()`
 **Quando Atualiza:**
-- ❌ **NÃO é tempo real:** Apenas ao abrir overlay
-- ❌ **Não atualiza:** Se overlay estiver aberto durante votos
+- ❌ **NÃO é tempo real:** Apenas ao abrir aba Resultados
+- ✅ **Completo:** Mostra todas as batalhas realizadas
 
 **Dados Mostrados:**
 - Matriz N×N de fotos
-- Verde = já batalharam
+- Verde = já batalharam (✓)
 - Cinza = não batalharam
-- Miniaturas nas linhas/colunas
+- Miniaturas clicáveis nas linhas/colunas (abre viewer)
 
 **Fonte de Dados:**
 ```javascript
 battleHistory → verifica quais pares já batalharam
+qualifiedPhotos → todas as fotos participantes
 ```
 
 **Como Abrir:**
-- Botão "🔥 Heatmap" na barra de ações
-
-**Problema:** Não atualiza em tempo real enquanto aberto
+- Acessar aba "Resultados" após contest finalizado
 
 ---
 
-## 5. Prévia do Bracket (Overlay)
-
-**Localização:** Modal overlay (botão "🏆 Prévia Bracket")
-**Função:** `renderBracketPreview()` linha 2702
-**Quando Atualiza:**
-- ❌ **NÃO é tempo real:** Apenas ao abrir overlay
-- ✅ **Dinâmico:** Baseado no ranking atual (não fixo)
-
-**Dados Mostrados:**
-- Top N (potência de 2) do ranking atual
-- Seeds numerados (#1, #2, etc)
-- Estrutura de rodadas do bracket
-- Miniaturas dos confrontos
-
-**Fonte de Dados:**
-```javascript
-ranked = [...qualifiedPhotos].sort((a, b) => eloScores[b.id] - eloScores[a.id])
-seeds = ranked.slice(0, bracketSize)
-generateBracketFromSeeds(seeds)
-```
-
-**Como Abrir:**
-- Botão "🏆 Prévia Bracket" na barra de ações
-
-**Problema:** Não atualiza em tempo real enquanto aberto
-
----
-
-## 6. Modal de Detalhes da Foto
+## 5. Modal de Detalhes da Foto
 
 **Localização:** Modal (botão "Ver Detalhes" no ranking)
 **Função:** `showPhotoDetails()` linha 2965
@@ -166,32 +124,30 @@ photoBattles = battleHistory.filter(b => b.photoA === photoId || b.photoB === ph
 
 ---
 
-## 7. Árvore do Bracket (Fase Bracket)
+## 7. Histórico Cronológico de Confrontos (Aba Resultados)
 
-**Localização:** Modal overlay (botão "🏆 Bracket")
-**Função:** `renderBracketTree()` linha 2800
+**Localização:** Aba "Resultados" após contest finalizado
+**Função:** `renderPairwiseBattleHistory()`
 **Quando Atualiza:**
-- ❌ **NÃO é tempo real:** Apenas ao abrir overlay
-- ❌ **Não atualiza:** Se overlay estiver aberto durante votos
+- ❌ **NÃO é tempo real:** Apenas ao abrir aba Resultados
+- ✅ **Completo:** Mostra todas as batalhas em ordem cronológica
 
 **Dados Mostrados:**
-- Árvore visual completa com rounds
-- Vencedores marcados (✓)
-- Power Level de cada foto
-- Votos e porcentagem (se disponível)
-- Mudança de Elo após batalha
+- Lista cronológica de todas as batalhas
+- Fotos lado a lado com VS no meio
+- Elo antes/depois de cada batalha
+- Mudança de Elo (Δ)
+- Badge de tier
+- Indicador de vencedor
 
 **Fonte de Dados:**
 ```javascript
-bracket.rounds → estrutura do bracket
-battleHistory → resultados das batalhas
-eloScores → Power Level atual
+battleHistory → histórico completo ordenado por timestamp
+eloScores → Elo atual de cada foto
 ```
 
 **Como Abrir:**
-- Botão "🏆 Bracket" na fase bracket
-
-**Problema:** Não atualiza em tempo real enquanto aberto
+- Acessar aba "Resultados" após contest finalizado
 
 ---
 
@@ -203,10 +159,9 @@ eloScores → Power Level atual
 
 ### ❌ NÃO Atualiza em Tempo Real:
 1. **Ranking Completo (overlay)** - Apenas ao abrir
-2. **Heatmap** - Apenas ao abrir
-3. **Prévia Bracket** - Apenas ao abrir
+2. **Heatmap de Confrontos** (aba Resultados) - Apenas ao abrir
+3. **Histórico Cronológico** (aba Resultados) - Apenas ao abrir
 4. **Modal Detalhes** - Apenas ao abrir
-5. **Árvore Bracket** - Apenas ao abrir
 
 ---
 
@@ -219,11 +174,11 @@ chooseBattleWinner('A' ou 'B')
   ↓
 handleQualifyingBattle(winner)
   ↓
-1. Calcula novo Elo (calculateElo)
-2. Atualiza eloScores (updateEloScores)
+1. Calcula novo Elo (updateEloScores)
+2. Atualiza eloScores no contestState
 3. Atualiza eloHistory
 4. Salva em battleHistory
-5. Avança para próxima batalha
+5. Gera próximo par único (generateNextPairwiseMatch)
 6. renderBattle() → renderQualifyingBattle()
   ↓
 renderQualifyingBattle() chama:

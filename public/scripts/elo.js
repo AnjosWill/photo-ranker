@@ -92,36 +92,6 @@ export function generateRoundRobin(photos, battleHistory = [], round = 1) {
 }
 
 /**
- * Gera pares de confronto balanceados (LEGADO - usar generateEliminationBracket)
- * @deprecated Use generateEliminationBracket para sistema de eliminatória
- */
-export function generatePairings(photos, eloScores = {}, history = []) {
-  if (photos.length < 2) {
-    return [];
-  }
-  
-  // Ordenar por Elo (maior → menor)
-  const sorted = [...photos].sort((a, b) => 
-    (eloScores[b.id] || 1500) - (eloScores[a.id] || 1500)
-  );
-  
-  const pairings = [];
-  const used = new Set();
-  
-  // Parear fotos adjacentes (após ordenação por Elo)
-  for (let i = 0; i < sorted.length - 1; i += 2) {
-    if (i + 1 < sorted.length) {
-      pairings.push({
-        photoA: sorted[i],
-        photoB: sorted[i + 1]
-      });
-    }
-  }
-  
-  return pairings;
-}
-
-/**
  * Atualiza scores após confronto
  * @param {string} winnerId - ID do vencedor
  * @param {string} loserId - ID do perdedor
@@ -314,8 +284,6 @@ function generateNextRound(bracket, completedRoundIndex) {
     return;
   }
   
-  console.log('[DEBUG] generateNextRound: Round', completedRoundIndex + 1, 'completado, tipo:', completedRound.type);
-  
   // Se é round inicial, criar Round 2 - Winners e Round 2 - Losers
   if (completedRound.type === 'initial') {
     // Winners Round 2: pegar TODOS os winners do Round 1
@@ -323,8 +291,6 @@ function generateNextRound(bracket, completedRoundIndex) {
       .filter(m => m.completed && m.winner && !m.bye)
       .map(m => m.winner)
       .filter((photo, index, self) => self.findIndex(p => p.id === photo.id) === index); // Remover duplicatas
-    
-    console.log('[DEBUG] generateNextRound: Winners do Round 1:', winnerPhotos.length, winnerPhotos.map(p => p.id));
     
     if (winnerPhotos.length >= 2) {
       const winnersMatches = [];
@@ -359,7 +325,6 @@ function generateNextRound(bracket, completedRoundIndex) {
           losers: [],
           completed: false
         });
-        console.log('[DEBUG] generateNextRound: Round 2 - Winners criado com', winnersMatches.length, 'matches');
       }
     }
     
@@ -368,8 +333,6 @@ function generateNextRound(bracket, completedRoundIndex) {
       .filter(m => m.completed && m.loser)
       .map(m => m.loser)
       .filter((photo, index, self) => self.findIndex(p => p.id === photo.id) === index); // Remover duplicatas
-    
-    console.log('[DEBUG] generateNextRound: Losers do Round 1:', loserPhotos.length, loserPhotos.map(p => p.id));
     
     if (loserPhotos.length >= 2) {
       const losersMatches = [];
@@ -404,7 +367,6 @@ function generateNextRound(bracket, completedRoundIndex) {
           losers: [],
           completed: false
         });
-        console.log('[DEBUG] generateNextRound: Round 2 - Losers criado com', losersMatches.length, 'matches');
       }
     }
   } else if (completedRound.type === 'winners') {
@@ -413,8 +375,6 @@ function generateNextRound(bracket, completedRoundIndex) {
       .filter(m => m.completed && m.winner && !m.bye)
       .map(m => m.winner)
       .filter((photo, index, self) => self.findIndex(p => p.id === photo.id) === index); // Remover duplicatas
-    
-    console.log('[DEBUG] generateNextRound: Winners do round anterior:', winnerPhotos.length, winnerPhotos.map(p => p.id));
     
     if (winnerPhotos.length >= 2) {
       const winnersMatches = [];
@@ -450,11 +410,9 @@ function generateNextRound(bracket, completedRoundIndex) {
           losers: [],
           completed: false
         });
-        console.log('[DEBUG] generateNextRound: Round', nextRoundNum, '- Winners criado com', winnersMatches.length, 'matches');
       }
     } else if (winnerPhotos.length === 1) {
       // Apenas 1 winner restante - campeão!
-      console.log('[DEBUG] generateNextRound: Campeão encontrado!', winnerPhotos[0].id);
     }
   } else if (completedRound.type === 'losers') {
     // Round de Losers: gerar próximo round de losers (se houver mais de 1)
@@ -462,8 +420,6 @@ function generateNextRound(bracket, completedRoundIndex) {
       .filter(m => m.completed && m.winner && !m.bye)
       .map(m => m.winner)
       .filter((photo, index, self) => self.findIndex(p => p.id === photo.id) === index);
-    
-    console.log('[DEBUG] generateNextRound: Winners do round losers anterior:', winnerPhotos.length, winnerPhotos.map(p => p.id));
     
     if (winnerPhotos.length >= 2) {
       const losersMatches = [];
@@ -499,7 +455,6 @@ function generateNextRound(bracket, completedRoundIndex) {
           losers: [],
           completed: false
         });
-        console.log('[DEBUG] generateNextRound: Round', nextRoundNum, '- Losers criado com', losersMatches.length, 'matches');
       }
     }
   }

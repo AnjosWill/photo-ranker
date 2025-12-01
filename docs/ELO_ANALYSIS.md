@@ -25,9 +25,9 @@ newLoserElo = loserElo + K * (0 - expectedLoser)
 3. `eloHistory` linha 3274-3283: Salva histórico por foto
 4. `battleHistory` linha 3286-3293: Salva batalha completa
 
-**Fase Bracket:**
-1. `handleBracketBattle()` linha 3445-3450: Calcula e atualiza Elo (opcional)
-2. `battleHistory` linha 3453-3462: Salva batalha com votos
+**Sistema Pairwise:**
+1. `handleQualifyingBattle()`: Calcula e atualiza Elo após cada batalha
+2. `battleHistory`: Salva batalha com votos e mudanças de Elo
 
 **Problema Identificado:**
 - `calculatePhotoStats()` recalcula stats do zero toda vez (linha 1854)

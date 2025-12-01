@@ -45,3 +45,5 @@ coverage/
 .env.local
 .env.*.local
 
+# Documentação de planejamento (mantida localmente)
+docs/
