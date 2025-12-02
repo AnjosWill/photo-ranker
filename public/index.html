@@ -9,19 +9,55 @@
     <link rel="stylesheet" href="./styles/components.css" />
   </head>
   <body>
+    <!-- Side Menu -->
+    <aside id="sideMenu" class="side-menu" aria-hidden="true">
+      <div class="side-menu-header">
+        <h3>Projetos</h3>
+        <button class="side-menu-close" aria-label="Fechar menu">×</button>
+      </div>
+      <div class="side-menu-list"></div>
+    </aside>
+    <div id="sideMenuOverlay" class="side-menu-overlay" aria-hidden="true"></div>
+
     <header class="app-header">
+      <div class="app-header-left">
+        <button id="sideMenuToggle" class="side-menu-toggle" aria-label="Abrir menu de projetos" aria-expanded="false">
+          ☰
+        </button>
       <div class="app-header-brand">
         <img src="./images/logo.png" alt="Photo Ranker" class="app-logo" />
+        </div>
       </div>
-      <nav class="tabs" role="tablist" aria-label="Navegação principal">
-        <a href="#/upload" role="tab" aria-selected="true">Upload</a>
-        <a href="#/rate" role="tab" aria-selected="false">Avaliar</a>
-        <a href="#/contest" role="tab" aria-selected="false">Contest</a>
-        <a href="#/results" role="tab" aria-selected="false">Resultados</a>
+      <nav id="breadcrumb" class="breadcrumb" aria-label="Navegação breadcrumb"></nav>
+      <nav class="tabs" role="tablist" aria-label="Navegação principal" id="mainTabs">
+        <!-- Tabs serão renderizadas dinamicamente via JS -->
       </nav>
     </header>
 
     <main id="app" class="app-main">
+      <!-- PROJECTS (Tela Inicial) -->
+      <section
+        data-route="projects"
+        class="route"
+        aria-labelledby="projects-title"
+      >
+        <h2 id="projects-title" class="sr-only">Projetos</h2>
+        <div class="panel">
+          <div class="projects-header">
+            <h3>Meus Projetos</h3>
+            <div style="display: flex; gap: 0.5rem;">
+              <button id="importProjectBtn" class="btn btn-secondary">
+                Importar
+              </button>
+              <button id="newProjectBtn" class="btn btn-primary">
+                <span>+</span> Novo Projeto
+              </button>
+            </div>
+          </div>
+          <div id="projectsGrid" class="projects-grid"></div>
+        </div>
+      </section>
+
       <!-- UPLOAD -->
       <section
         data-route="upload"
@@ -132,6 +168,18 @@
           <!-- Resultados serão renderizados via JS -->
         </div>
       </section>
+
+      <!-- SETTINGS (Configurações do Projeto) -->
+      <section
+        data-route="settings"
+        class="route"
+        aria-labelledby="settings-title"
+      >
+        <h2 id="settings-title" class="sr-only">Configurações do Projeto</h2>
+        <div id="projectSettingsView" class="project-settings-view">
+          <!-- Configurações serão renderizadas via JS -->
+        </div>
+      </section>
     </main>
 
     <!-- Progress overlay -->
@@ -237,9 +285,153 @@
       </div>
     </div>
 
+    <!-- Project Edit Modal -->
+    <div
+      id="projectEditModal"
+      class="modal"
+      aria-hidden="true"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="projectEditTitle"
+    >
+      <div class="dialog">
+        <h3 id="projectEditTitle">Editar Projeto</h3>
+        <div class="form-group">
+          <label for="projectEditName">Nome *</label>
+          <input
+            type="text"
+            id="projectEditName"
+            class="input"
+            required
+            placeholder="Nome do projeto"
+          />
+        </div>
+        <div class="form-group">
+          <label for="projectEditDescription">Descrição</label>
+          <textarea
+            id="projectEditDescription"
+            class="input"
+            rows="3"
+            placeholder="Descrição do projeto (opcional)"
+          ></textarea>
+        </div>
+        <div class="actions">
+          <button id="projectEditCancel" class="btn btn-secondary">
+            Cancelar (Esc)
+          </button>
+          <button id="projectEditSave" class="btn btn-primary">Salvar</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Project Create Modal -->
+    <div
+      id="projectCreateModal"
+      class="modal"
+      aria-hidden="true"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="projectCreateTitle"
+    >
+      <div class="dialog">
+        <h3 id="projectCreateTitle">Novo Projeto</h3>
+        <div class="form-group">
+          <label for="projectCreateName">Nome *</label>
+          <input
+            type="text"
+            id="projectCreateName"
+            class="input"
+            required
+            placeholder="Nome do projeto"
+          />
+        </div>
+        <div class="form-group">
+          <label for="projectCreateDescription">Descrição</label>
+          <textarea
+            id="projectCreateDescription"
+            class="input"
+            rows="3"
+            placeholder="Descrição do projeto (opcional)"
+          ></textarea>
+        </div>
+        <div class="actions">
+          <button id="projectCreateCancel" class="btn btn-secondary">
+            Cancelar (Esc)
+          </button>
+          <button id="projectCreateSave" class="btn btn-primary">Criar</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Folder Edit Modal -->
+    <div
+      id="folderEditModal"
+      class="modal"
+      aria-hidden="true"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="folderEditTitle"
+    >
+      <div class="dialog">
+        <h3 id="folderEditTitle">Editar Nome da Pasta</h3>
+        <div class="form-group">
+          <label for="folderEditName">Nome *</label>
+          <input
+            type="text"
+            id="folderEditName"
+            class="input"
+            required
+            placeholder="Nome da pasta"
+          />
+        </div>
+        <div class="actions">
+          <button id="folderEditCancel" class="btn btn-secondary">
+            Cancelar (Esc)
+          </button>
+          <button id="folderEditSave" class="btn btn-primary">Salvar</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Folder Create Modal -->
+    <div
+      id="folderCreateModal"
+      class="modal"
+      aria-hidden="true"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="folderCreateTitle"
+    >
+      <div class="dialog">
+        <h3 id="folderCreateTitle">Nova Pasta</h3>
+        <div class="form-group">
+          <label for="folderCreateName">Nome *</label>
+          <input
+            type="text"
+            id="folderCreateName"
+            class="input"
+            required
+            placeholder="Nome da pasta"
+          />
+        </div>
+        <div class="actions">
+          <button id="folderCreateCancel" class="btn btn-secondary">
+            Cancelar (Esc)
+          </button>
+          <button id="folderCreateSave" class="btn btn-primary">Criar</button>
+        </div>
+      </div>
+    </div>
+
     <footer class="app-footer">
       <small>Mobile-first • Offline-ready (em breve PWA) • A11Y</small>
     </footer>
+
+    <!-- JSZip para export/import -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    
+    <!-- Input file oculto para importação -->
+    <input type="file" id="importProjectFile" accept=".zip" style="display: none;" />
 
     <script type="module" src="./scripts/app.js"></script>
   </body>

@@ -2,7 +2,8 @@
     "name": "photo-ranker",
     "private": true,
     "scripts": {
-      "dev": "http-server public -p 5500 -c-1"
+      "dev": "http-server public -p 8000 -c-1",
+      "build": "echo 'No build step required - static site'"
     },
     "devDependencies": {
       "http-server": "^14.1.1"

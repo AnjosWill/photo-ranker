@@ -17,7 +17,11 @@
 
 import { $, on } from "./ui.js";
 import { calculateScoresAndTiers, calculateEloRange, normalizeEloToScore, getTierFromScore, TIERS } from "./tiers.js";
-import { savePhotos, getAllPhotos, clearAll } from "./db.js";
+import { savePhotos, getAllPhotos, clearAll, getAllContests, getContest, saveContest, getPhotosByProject } from "./db.js";
+import { getAllProjects, createProject, updateProject, deleteProject, duplicateProject, getProjectStats, getAllFolders } from "./modules/project/project-manager.js";
+import { renderProjectsGrid, renderSideMenu, renderBreadcrumb, openProjectEditModal, setModalFunctions } from "./modules/project/project-ui.js";
+import { downloadProjectExport } from "./modules/export/export-manager.js";
+import { importProjectFromZIP } from "./modules/export/import-manager.js";
 import { filesToThumbs } from "./image-utils.js";
 import { openCropper } from "./cropper.js";
 import { createStarRating, updateStarRating } from "./rating.js";
@@ -43,7 +47,8 @@ const MAX_SIZE_MB = 15;
 const MAX_FILES_PER_BATCH = 300;
 const ACCEPTED_TYPES = /^image\/(jpeg|jpg|png|webp|heic|heif)$/i;
 
-const routes = ["upload", "rate", "contest", "results"];
+const routes = ["projects", "upload", "rate", "contest", "results", "settings"];
+let currentProjectId = null;
 
 let confirmOpen = false;
 let isResultsViewMode = false;
@@ -71,26 +76,761 @@ const SORT_OPTIONS = {
   'size-desc': { label: '📦 Tamanho (maior)', fn: (a, b) => (b.w * b.h) - (a.w * a.h) },
   'size-asc': { label: '📦 Tamanho (menor)', fn: (a, b) => (a.w * a.h) - (b.w * b.h) },
   'dimension-desc': { label: '📏 Dimensão (maior)', fn: (a, b) => Math.max(b.w, b.h) - Math.max(a.w, a.h) },
-  'dimension-asc': { label: '📏 Dimensão (menor)', fn: (a, b) => Math.max(a.w, a.h) - Math.max(b.w, b.h) }
+  'dimension-asc': { label: '📏 Dimensão (menor)', fn: (a, b) => Math.max(a.w, a.h) - Math.max(b.w, b.h) },
+  'rank-asc': { label: '🏆 Colocação (melhor)', fn: (a, b) => {
+    const rankA = (a._contestRank && a._contestRank > 0) ? a._contestRank : Infinity;
+    const rankB = (b._contestRank && b._contestRank > 0) ? b._contestRank : Infinity;
+    // Se ambos têm rank, ordenar por rank
+    if (rankA !== Infinity && rankB !== Infinity) {
+      return rankA - rankB;
+    }
+    // Se apenas A tem rank, A vem primeiro
+    if (rankA !== Infinity) return -1;
+    // Se apenas B tem rank, B vem primeiro
+    if (rankB !== Infinity) return 1;
+    // Se nenhum tem rank, manter ordem original
+    return 0;
+  }, requiresContest: true },
+  'rank-desc': { label: '🏆 Colocação (pior)', fn: (a, b) => {
+    const rankA = (a._contestRank && a._contestRank > 0) ? a._contestRank : Infinity;
+    const rankB = (b._contestRank && b._contestRank > 0) ? b._contestRank : Infinity;
+    // Se ambos têm rank, ordenar por rank (invertido)
+    if (rankA !== Infinity && rankB !== Infinity) {
+      return rankB - rankA;
+    }
+    // Se apenas A tem rank, A vem depois
+    if (rankA !== Infinity) return 1;
+    // Se apenas B tem rank, B vem depois
+    if (rankB !== Infinity) return -1;
+    // Se nenhum tem rank, manter ordem original
+    return 0;
+  }, requiresContest: true }
 };
 
 function setActiveRoute(name) {
   routes.forEach((r) => {
     const el = document.querySelector(`[data-route="${r}"]`);
-    el.classList.toggle("active", r === name);
-  });
-  // tabs aria-selected
-  document.querySelectorAll(".tabs a").forEach((a) => {
-    a.setAttribute("aria-selected", a.getAttribute("href") === `#/${name}`);
+    if (el) {
+      el.classList.toggle("active", r === name);
+    }
   });
 }
 
-function router() {
-  const hash = location.hash.replace("#/", "") || "upload";
-  setActiveRoute(routes.includes(hash) ? hash : "upload");
+/**
+ * Renderiza tabs dinamicamente baseado no contexto
+ */
+function renderTabs(projectId, currentTab) {
+  const tabsContainer = document.getElementById('mainTabs');
+  if (!tabsContainer) return;
+  
+  if (!projectId) {
+    // Tela inicial - sem tabs
+    tabsContainer.innerHTML = '';
+    return;
+  }
+  
+  const tabs = [
+    { id: 'upload', label: 'Upload', href: `#/project/${projectId}/upload` },
+    { id: 'rate', label: 'Avaliar', href: `#/project/${projectId}/rate` },
+    { id: 'contest', label: 'Contest', href: `#/project/${projectId}/contest` },
+    { id: 'results', label: 'Resultados', href: `#/project/${projectId}/results` },
+    { id: 'settings', label: 'Projeto', href: `#/project/${projectId}/settings` }
+  ];
+  
+  tabsContainer.innerHTML = tabs.map(tab => 
+    `<a href="${tab.href}" role="tab" aria-selected="${tab.id === currentTab}" data-tab="${tab.id}">${tab.label}</a>`
+  ).join('');
+  
+  // Atualizar aria-selected
+  tabsContainer.querySelectorAll('a').forEach(a => {
+    const isActive = a.getAttribute('data-tab') === currentTab;
+    a.setAttribute('aria-selected', isActive);
+  });
 }
+
+/**
+ * Obtém o ID do projeto ativo da URL (Sprint 5 - F5.2)
+ */
+function getActiveProjectId() {
+  return currentProjectId;
+}
+
+/**
+ * Extrai projectId e tab da URL
+ */
+function parseRoute(hash) {
+  const path = hash.replace("#/", "") || "projects";
+  const parts = path.split('/');
+  
+  if (parts[0] === 'projects') {
+    return { type: 'projects', projectId: null, tab: null };
+  } else if (parts[0] === 'project' && parts[1]) {
+    return { type: 'project', projectId: parts[1], tab: parts[2] || 'upload' };
+  }
+  
+  // Fallback para rotas antigas (compatibilidade)
+  return { type: 'legacy', projectId: null, tab: path };
+}
+
+/**
+ * Migração para sistema multi-projeto (Sprint 5 - F5.1)
+ * Cria contest "default" APENAS se já existirem fotos no banco
+ */
+async function migrateToMultiProject() {
+  try {
+    const contests = await getAllContests();
+    
+    // Se já existem contests, não precisa migrar
+    if (contests.length > 0) {
+      return;
+    }
+    
+    // Verificar se há fotos no banco
+    const allPhotos = await getAllPhotos();
+    if (allPhotos.length === 0) {
+      // Sem fotos = sem dados = usuário deve criar primeiro projeto manualmente
+      return;
+    }
+    
+    // Há fotos: criar contest padrão e migrar
+    const defaultContest = {
+      id: 'default',
+      name: 'Meu Primeiro Contest',
+      description: 'Contest padrão criado automaticamente',
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      folderId: null, // Sem pasta
+      order: Date.now(), // Ordem inicial
+      contestState: {
+        phase: 'idle',
+        eloScores: {},
+        battleHistory: [],
+        qualifying: null,
+        final: null,
+        championId: null
+      },
+      settings: {
+        minRatingForBattle: 5,
+        kFactor: 32
+      }
+    };
+    
+    // Migrar estado do localStorage se existir
+    const savedState = localStorage.getItem('photoranker-contest-state');
+    if (savedState) {
+      try {
+        const state = JSON.parse(savedState);
+        defaultContest.contestState = {
+          phase: state.phase || 'idle',
+          eloScores: state.eloScores || {},
+          battleHistory: state.battleHistory || [],
+          qualifying: state.qualifying || null,
+          final: state.final || null,
+          championId: state.championId || null
+        };
+      } catch (e) {
+        console.warn('Erro ao migrar estado do localStorage:', e);
+      }
+    }
+    
+    await saveContest(defaultContest);
+    
+    // Atualizar fotos com projectId
+    const photosToUpdate = [];
+    for (const photo of allPhotos) {
+      if (!photo.projectId) {
+        photo.projectId = 'default';
+        photosToUpdate.push(photo);
+      }
+    }
+    
+    // Atualizar em batch para melhor performance
+    if (photosToUpdate.length > 0) {
+      await savePhotos(photosToUpdate);
+    }
+    
+    toast('Dados migrados para sistema de projetos!');
+  } catch (error) {
+    console.error('Erro na migração para multi-projeto:', error);
+    // Não bloquear a aplicação se a migração falhar
+  }
+}
+
+/**
+ * Migra projetos existentes para o sistema de pastas
+ * Adiciona folderId: null e order baseado em createdAt
+ */
+async function migrateToFolders() {
+  try {
+    // Verificar se já foi migrado
+    const migrationKey = 'photoranker-folders-migrated';
+    if (localStorage.getItem(migrationKey) === 'true') {
+      return;
+    }
+    
+    const projects = await getAllProjects();
+    const projectsToUpdate = [];
+    
+    for (const project of projects) {
+      // Se projeto não tem folderId ou order, adicionar
+      if (project.folderId === undefined || project.order === undefined) {
+        projectsToUpdate.push({
+          ...project,
+          folderId: project.folderId === undefined ? null : project.folderId,
+          order: project.order === undefined ? (project.createdAt || Date.now()) : project.order,
+          updatedAt: Date.now()
+        });
+      }
+    }
+    
+    // Atualizar projetos em batch
+    if (projectsToUpdate.length > 0) {
+      for (const project of projectsToUpdate) {
+        await saveContest(project);
+      }
+      console.log(`Migração de pastas: ${projectsToUpdate.length} projetos atualizados`);
+    }
+    
+    // Marcar migração como concluída
+    localStorage.setItem(migrationKey, 'true');
+  } catch (error) {
+    console.error('Erro na migração para pastas:', error);
+    // Não bloquear a aplicação se a migração falhar
+  }
+}
+
+async function router() {
+  try {
+    const route = parseRoute(location.hash);
+    currentProjectId = route.projectId;
+    
+    if (route.type === 'projects') {
+      // Tela inicial de projetos
+      setActiveRoute('projects');
+      renderTabs(null, null);
+      await renderBreadcrumb(null);
+      await renderProjectsView();
+    } else if (route.type === 'project') {
+      // Dentro de um projeto
+      setActiveRoute(route.tab);
+      renderTabs(route.projectId, route.tab);
+      await renderBreadcrumb(route.projectId, route.tab);
+      
+      // Renderizar view específica
+      switch (route.tab) {
+        case 'upload':
+          await renderProjectUploadView(route.projectId);
+          break;
+        case 'rate':
+          await renderProjectRateView(route.projectId);
+          break;
+        case 'contest':
+          await renderProjectContestView(route.projectId);
+          break;
+        case 'results':
+          await renderProjectResultsView(route.projectId);
+          break;
+        case 'settings':
+          await renderProjectSettingsView(route.projectId);
+          break;
+        default:
+          // Redirecionar para upload se tab inválida
+          window.location.hash = `#/project/${route.projectId}/upload`;
+      }
+    } else {
+      // Rotas legadas - redirecionar para projetos
+      window.location.hash = '#/projects';
+    }
+    
+    // Atualizar side menu
+    const projects = await getAllProjects();
+    await renderSideMenu(projects, currentProjectId);
+  } catch (error) {
+    console.error('Erro no router:', error);
+    // Em caso de erro, redirecionar para projetos ou projeto atual
+    if (currentProjectId) {
+      window.location.hash = `#/project/${currentProjectId}/upload`;
+    } else {
+      window.location.hash = '#/projects';
+    }
+  }
+}
+/**
+ * Renderiza tela inicial de projetos
+ */
+async function renderProjectsView() {
+  const projects = await getAllProjects();
+  await renderProjectsGrid(projects, currentProjectId);
+}
+
+/**
+ * Renderiza view de upload do projeto
+ */
+async function renderProjectUploadView(projectId) {
+  const photos = await getPhotosByProject(projectId);
+  renderGrid(photos);
+  updateFilterCounts();
+  await updateSortSelect(); // Agora é async para verificar contest
+}
+
+/**
+ * Renderiza view de avaliar do projeto
+ */
+async function renderProjectRateView(projectId) {
+  allPhotos = await getPhotosByProject(projectId);
+  renderRateView();
+}
+
+/**
+ * Renderiza view de contest do projeto
+ */
+async function renderProjectContestView(projectId) {
+  allPhotos = await getPhotosByProject(projectId);
+  renderContestView();
+}
+
+/**
+ * Renderiza view de resultados do projeto
+ */
+async function renderProjectResultsView(projectId) {
+  allPhotos = await getPhotosByProject(projectId);
+  renderResultsView();
+}
+
+/**
+ * Renderiza view de configurações do projeto
+ */
+async function renderProjectSettingsView(projectId) {
+  const container = document.getElementById('projectSettingsView');
+  if (!container) return;
+  
+  const project = await getContest(projectId);
+  if (!project) {
+    container.innerHTML = '<p>Projeto não encontrado</p>';
+    return;
+  }
+  
+  const stats = await getProjectStats(projectId);
+  const photos = await getPhotosByProject(projectId);
+  const visiblePhotos = photos.filter(p => !p._isSplit);
+  
+  container.innerHTML = `
+    <div class="panel">
+      <div class="project-settings-header">
+        <h3>Configurações do Projeto</h3>
+        <button id="editProjectBtn" class="btn btn-secondary">Editar Nome</button>
+      </div>
+      
+      <div class="project-settings-content">
+        <div class="settings-section">
+          <h4>Informações</h4>
+          <div class="info-grid">
+            <div class="info-item">
+              <label>Nome</label>
+              <p>${escapeHtml(project.name)}</p>
+            </div>
+            <div class="info-item">
+              <label>Descrição</label>
+              <p>${project.description ? escapeHtml(project.description) : '<em>Sem descrição</em>'}</p>
+            </div>
+            <div class="info-item">
+              <label>Criado em</label>
+              <p>${new Date(project.createdAt).toLocaleDateString('pt-BR')}</p>
+            </div>
+          </div>
+        </div>
+        
+        <div class="settings-section">
+          <h4>Estatísticas</h4>
+          <div class="stats-grid">
+            <div class="stat-item">
+              <span class="stat-value">${stats.totalPhotos}</span>
+              <span class="stat-label">Fotos</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-value">${stats.ratedPhotos}</span>
+              <span class="stat-label">Avaliadas</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-value">${stats.rated5Photos}</span>
+              <span class="stat-label">Com ⭐5</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-value">${stats.phase}</span>
+              <span class="stat-label">Status</span>
+            </div>
+          </div>
+        </div>
+        
+        <div class="settings-section">
+          <h4>Configurações do Contest</h4>
+          <div class="form-group">
+            <label for="settingsMinRating">Rating mínimo para Contest</label>
+            <input type="number" id="settingsMinRating" class="input" min="1" max="5" value="${project.settings?.minRatingForBattle || 5}" />
+          </div>
+          <div class="form-group">
+            <label for="settingsKFactor">Fator K (Elo)</label>
+            <input type="number" id="settingsKFactor" class="input" min="1" max="100" value="${project.settings?.kFactor || 32}" />
+          </div>
+          <button id="saveSettingsBtn" class="btn btn-primary">Salvar Configurações</button>
+        </div>
+        
+        <div class="settings-section">
+          <h4>Ações</h4>
+          <div class="actions-grid">
+            <button id="duplicateProjectBtn" class="btn btn-secondary">Duplicar Projeto</button>
+            <button id="exportProjectBtn" class="btn btn-secondary" disabled>Exportar (em breve)</button>
+            <button id="deleteProjectBtn" class="btn btn-danger">Deletar Projeto</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+  
+  // Handlers
+  $('#editProjectBtn')?.addEventListener('click', async () => {
+    const data = await openProjectEditModal(project);
+    if (data) {
+      await updateProject(projectId, data);
+      toast('Projeto atualizado!');
+      await renderProjectSettingsView(projectId);
+      await router(); // Atualizar breadcrumb
+    }
+  });
+  
+  $('#saveSettingsBtn')?.addEventListener('click', async () => {
+    const minRating = parseInt($('#settingsMinRating')?.value || 5);
+    const kFactor = parseInt($('#settingsKFactor')?.value || 32);
+    await updateProject(projectId, {
+      settings: { minRatingForBattle: minRating, kFactor }
+    });
+    toast('Configurações salvas!');
+  });
+  
+  $('#duplicateProjectBtn')?.addEventListener('click', async () => {
+    const newProject = await duplicateProject(projectId);
+    toast('Projeto duplicado!');
+    window.location.hash = `#/project/${newProject.id}/upload`;
+  });
+  
+  $('#deleteProjectBtn')?.addEventListener('click', async () => {
+    openConfirm({
+      title: 'Deletar projeto?',
+      message: `Tem certeza que deseja deletar o projeto "${project.name}"? Todas as fotos serão removidas.`,
+      confirmText: 'Deletar',
+      onConfirm: async () => {
+        await deleteProject(projectId);
+        toast('Projeto deletado!');
+        window.location.hash = '#/projects';
+      }
+    });
+  });
+}
+
+/**
+ * Inicializa side menu
+ */
+function initSideMenu() {
+  const toggle = document.getElementById('sideMenuToggle');
+  const menu = document.getElementById('sideMenu');
+  const overlay = document.getElementById('sideMenuOverlay');
+  const close = menu?.querySelector('.side-menu-close');
+  
+  const openMenu = () => {
+    menu?.setAttribute('aria-hidden', 'false');
+    overlay?.setAttribute('aria-hidden', 'false');
+    toggle?.setAttribute('aria-expanded', 'true');
+    document.body.style.overflow = 'hidden';
+  };
+  
+  const closeMenu = () => {
+    menu?.setAttribute('aria-hidden', 'true');
+    overlay?.setAttribute('aria-hidden', 'true');
+    toggle?.setAttribute('aria-expanded', 'false');
+    document.body.style.overflow = '';
+  };
+  
+  toggle?.addEventListener('click', openMenu);
+  close?.addEventListener('click', closeMenu);
+  overlay?.addEventListener('click', closeMenu);
+  
+  // Fechar com ESC
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && menu?.getAttribute('aria-hidden') === 'false') {
+      closeMenu();
+    }
+  });
+}
+
+/**
+ * Inicializa clique no logotipo para redirecionar para tela de projetos
+ */
+function initLogoClick() {
+  const logo = document.querySelector('.app-logo');
+  const brandContainer = document.querySelector('.app-header-brand');
+  
+  const handleLogoClick = () => {
+    window.location.hash = '#/projects';
+  };
+  
+  if (logo) {
+    logo.style.cursor = 'pointer';
+    logo.addEventListener('click', handleLogoClick);
+  } else if (brandContainer) {
+    brandContainer.style.cursor = 'pointer';
+    brandContainer.addEventListener('click', handleLogoClick);
+  }
+}
+
+/**
+ * Inicializa handlers de projetos
+ */
+function initProjectsHandlers() {
+  // Novo projeto
+  $('#newProjectBtn')?.addEventListener('click', async () => {
+    const modal = document.getElementById('projectCreateModal');
+    const nameInput = modal?.querySelector('#projectCreateName');
+    const descInput = modal?.querySelector('#projectCreateDescription');
+    const cancelBtn = modal?.querySelector('#projectCreateCancel');
+    const saveBtn = modal?.querySelector('#projectCreateSave');
+    
+    if (!modal) return;
+    
+    nameInput.value = '';
+    descInput.value = '';
+    modal.setAttribute('aria-hidden', 'false');
+    nameInput?.focus();
+    
+    const cleanup = () => {
+      modal.setAttribute('aria-hidden', 'true');
+    };
+    
+    cancelBtn?.addEventListener('click', cleanup, { once: true });
+    saveBtn?.addEventListener('click', async () => {
+      const name = nameInput?.value.trim();
+      if (!name) {
+        openAlert({
+          title: 'Campo obrigatório',
+          message: 'Nome é obrigatório',
+          okText: 'OK'
+        });
+        return;
+      }
+      
+      const project = await createProject(name, descInput?.value.trim() || '');
+      cleanup();
+      toast('Projeto criado!');
+      window.location.hash = `#/project/${project.id}/upload`;
+    }, { once: true });
+  });
+  
+  // Handlers de cards de projeto (delegation)
+  document.addEventListener('click', async (e) => {
+    const action = e.target.closest('[data-action]');
+    if (!action) return;
+    
+    const projectId = action.dataset.projectId;
+    if (!projectId) return;
+    
+    switch (action.dataset.action) {
+      case 'open':
+        window.location.hash = `#/project/${projectId}/upload`;
+        break;
+      case 'edit':
+        const project = await getContest(projectId);
+        if (project) {
+          const data = await openProjectEditModal(project);
+          if (data) {
+            await updateProject(projectId, data);
+            toast('Projeto atualizado!');
+            await renderProjectsView();
+          }
+        }
+        break;
+      case 'duplicate':
+        const newProject = await duplicateProject(projectId);
+        toast('Projeto duplicado!');
+        await renderProjectsView();
+        break;
+      case 'export':
+        try {
+          const proj = await getContest(projectId);
+          if (!proj) {
+            toast('Projeto não encontrado');
+            return;
+          }
+          
+          // Criar barra de progresso
+          const progressBar = document.createElement('div');
+          progressBar.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: rgba(255, 255, 255, 0.1);
+            z-index: 10000;
+            pointer-events: none;
+          `;
+          const progressFill = document.createElement('div');
+          progressFill.style.cssText = `
+            height: 100%;
+            background: var(--accent, #4a9eff);
+            width: 0%;
+            transition: width 0.3s ease;
+          `;
+          progressBar.appendChild(progressFill);
+          document.body.appendChild(progressBar);
+          
+          // Desabilitar botão durante exportação
+          action.disabled = true;
+          const originalText = action.textContent;
+          action.textContent = 'Exportando...';
+          
+          try {
+            await downloadProjectExport(projectId, (progress) => {
+              progressFill.style.width = `${progress}%`;
+            });
+            
+            toast('Projeto exportado com sucesso!');
+          } catch (error) {
+            console.error('Erro ao exportar:', error);
+            openAlert({
+              title: 'Erro ao exportar',
+              message: error.message || 'Ocorreu um erro ao exportar o projeto.',
+              okText: 'OK'
+            });
+          } finally {
+            action.disabled = false;
+            action.textContent = originalText;
+            document.body.removeChild(progressBar);
+          }
+        } catch (error) {
+          console.error('Erro ao exportar projeto:', error);
+          openAlert({
+            title: 'Erro ao exportar',
+            message: error.message || 'Ocorreu um erro ao exportar o projeto.',
+            okText: 'OK'
+          });
+        }
+        break;
+      case 'delete':
+        const proj = await getContest(projectId);
+        if (proj) {
+          openConfirm({
+            title: 'Deletar projeto?',
+            message: `Tem certeza que deseja deletar o projeto "${proj.name}"? Todas as fotos serão removidas.`,
+            confirmText: 'Deletar',
+            onConfirm: async () => {
+              await deleteProject(projectId);
+              toast('Projeto deletado!');
+              await renderProjectsView();
+            }
+          });
+        }
+        break;
+    }
+  });
+  
+  // Handler para botão Importar
+  $('#importProjectBtn')?.addEventListener('click', () => {
+    const fileInput = document.getElementById('importProjectFile');
+    if (fileInput) {
+      fileInput.value = ''; // Reset para permitir selecionar o mesmo arquivo novamente
+      fileInput.click();
+    }
+  });
+  
+  // Handler para input file de importação
+  const importFileInput = document.getElementById('importProjectFile');
+  if (importFileInput) {
+    importFileInput.addEventListener('change', async (e) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      
+      if (!file.name.endsWith('.zip')) {
+        openAlert({
+          title: 'Arquivo inválido',
+          message: 'Por favor, selecione um arquivo ZIP.',
+          okText: 'OK'
+        });
+        importFileInput.value = ''; // Reset input
+        return;
+      }
+      
+      // Criar barra de progresso
+      const progressBar = document.createElement('div');
+      progressBar.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 4px;
+        background: rgba(255, 255, 255, 0.1);
+        z-index: 10000;
+        pointer-events: none;
+      `;
+      const progressFill = document.createElement('div');
+      progressFill.style.cssText = `
+        height: 100%;
+        background: var(--accent, #4a9eff);
+        width: 0%;
+        transition: width 0.3s ease;
+      `;
+      progressBar.appendChild(progressFill);
+      document.body.appendChild(progressBar);
+      
+      // Desabilitar botão durante importação
+      const importBtn = $('#importProjectBtn');
+      if (importBtn) {
+        importBtn.disabled = true;
+        const originalText = importBtn.textContent;
+        importBtn.textContent = 'Importando...';
+        
+        try {
+          const importedProject = await importProjectFromZIP(file, (progress) => {
+            progressFill.style.width = `${progress}%`;
+          });
+          
+          toast(`Projeto "${importedProject.name}" importado com sucesso!`);
+          await renderProjectsView();
+          
+          // Opcional: abrir o projeto importado
+          // window.location.hash = `#/project/${importedProject.id}/upload`;
+        } catch (error) {
+          console.error('Erro ao importar:', error);
+          openAlert({
+            title: 'Erro ao importar',
+            message: error.message || 'Ocorreu um erro ao importar o projeto.',
+            okText: 'OK'
+          });
+        } finally {
+          importBtn.disabled = false;
+          importBtn.textContent = originalText;
+          document.body.removeChild(progressBar);
+          importFileInput.value = ''; // Reset input
+        }
+      }
+    });
+  }
+}
+
+/**
+ * Utilitário para escapar HTML
+ */
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
 window.addEventListener("hashchange", router);
 window.addEventListener("DOMContentLoaded", async () => {
+  // Se não houver hash, redirecionar para projetos
+  if (!location.hash || location.hash === '#') {
+    location.hash = '#/projects';
+  }
+  
   router();
   initUpload();
   initFilters();
@@ -136,17 +876,31 @@ window.addEventListener("DOMContentLoaded", async () => {
     }
   });
 
-  allPhotos = await getAllPhotos();
+  // Migração para multi-projeto (deve rodar antes de carregar fotos)
+  await migrateToMultiProject();
   
+  // Migração para pastas (adiciona folderId e order aos projetos existentes)
+  await migrateToFolders();
+  
+  // Configurar funções de modal para project-ui.js
+  setModalFunctions(openConfirm, openAlert);
+
+  // Inicializar side menu
+  initSideMenu();
+  
+  // Inicializar clique no logotipo para redirecionar para projetos
+  initLogoClick();
+  
+  // Inicializar handlers de projetos
+  initProjectsHandlers();
+
   // Carregar ordenação salva do localStorage
   const savedSort = localStorage.getItem('photoranker-sort');
   if (savedSort && SORT_OPTIONS[savedSort]) {
     currentSort = savedSort;
   }
   
-  renderGrid(allPhotos);
-  updateFilterCounts(); // Atualizar contadores dos filtros
-  updateSortSelect(); // Atualizar select de ordenação
+  // Router já renderiza a view apropriada
 });
 
 function toggleSelectionMode(force) {
@@ -161,8 +915,16 @@ function toggleSelectionMode(force) {
   updateSelectBtn();
   updateMultiBar();
 
-  // re-render garante remoção de .selected e esconde select-mark
-  (async () => renderGrid(await getAllPhotos()))();
+  // re-render garante remoção de .selected e esconde select-mark (apenas do projeto atual)
+  const projectId = getActiveProjectId();
+  if (projectId) {
+    (async () => {
+      const projectPhotos = await getPhotosByProject(projectId);
+      renderGrid(projectPhotos);
+    })();
+  } else {
+    (async () => renderGrid(await getAllPhotos()))();
+  }
 }
 
 function updateSelectBtn() {
@@ -269,9 +1031,15 @@ function initUpload() {
       return;
     }
 
-    // sem seleção → modal para apagar fotos do filtro ativo
-    const allPhotos = await getAllPhotos();
-    let visiblePhotos = allPhotos.filter(p => !p._isSplit);
+    // sem seleção → modal para apagar fotos do filtro ativo (APENAS do projeto atual)
+    const projectId = getActiveProjectId();
+    if (!projectId) {
+      toast("Nenhum projeto ativo. Abra um projeto primeiro.");
+      return;
+    }
+    
+    const projectPhotos = await getPhotosByProject(projectId);
+    let visiblePhotos = projectPhotos.filter(p => !p._isSplit);
     
     // Aplicar ordenação ativa
     const sortFn = SORT_OPTIONS[currentSort]?.fn || SORT_OPTIONS['date-desc'].fn;
@@ -309,7 +1077,14 @@ function initUpload() {
         await savePhotos(toDelete);
         
         toggleSelectionMode(false); // garante modo normal
-        renderGrid(await getAllPhotos());
+        // Re-renderizar apenas fotos do projeto atual
+        const projectId = getActiveProjectId();
+        if (projectId) {
+          const remainingPhotos = await getPhotosByProject(projectId);
+          renderGrid(remainingPhotos);
+        } else {
+          renderGrid();
+        }
         toast(`${photosToDelete.length} foto(s) removidas (${filterName}).`);
       },
     });
@@ -378,6 +1153,16 @@ async function handleFiles(fileList) {
     updateProgress("Analisando imagens para detecção 2×2...", 90);
     const { normalPhotos, quadCandidates } = await analyzePhotosForQuad(newPhotos);
     
+    // Adicionar projectId às fotos (Sprint 5 - F5.1)
+    const activeProjectId = getActiveProjectId();
+    if (activeProjectId) {
+      normalPhotos.forEach(photo => {
+        if (!photo.projectId) {
+          photo.projectId = activeProjectId;
+        }
+      });
+    }
+    
     // Salvar fotos normais imediatamente
     if (normalPhotos.length > 0) {
       await savePhotos(normalPhotos);
@@ -388,13 +1173,27 @@ async function handleFiles(fileList) {
     // Processar candidatas 2×2 sequencialmente
     if (quadCandidates.length > 0) {
       const splitResults = await processCropQueue(quadCandidates);
-      renderGrid(await getAllPhotos());
+      // Renderizar apenas fotos do projeto atual
+      const projectId = getActiveProjectId();
+      if (projectId) {
+        const projectPhotos = await getPhotosByProject(projectId);
+        renderGrid(projectPhotos);
+      } else {
+        renderGrid();
+      }
       
       const totalAdded = normalPhotos.length + splitResults.totalQuadrants;
       toast(`${totalAdded} imagem(ns) adicionadas (${splitResults.splitCount} divididas em 2×2).`);
     } else {
-    renderGrid(await getAllPhotos());
-    toast(`${newPhotos.length} imagem(ns) adicionadas.`);
+      // Renderizar apenas fotos do projeto atual
+      const projectId = getActiveProjectId();
+      if (projectId) {
+        const projectPhotos = await getPhotosByProject(projectId);
+        renderGrid(projectPhotos);
+      } else {
+        renderGrid();
+      }
+      toast(`${newPhotos.length} imagem(ns) adicionadas.`);
     }
   } catch (err) {
     console.error(err);
@@ -531,9 +1330,15 @@ async function handleRevert(croppedPhoto) {
             // Salvar alterações
             await savePhotos([...photosToDelete, restoredOriginal]);
             
-            // Re-renderizar grid mantendo foco na foto restaurada
-            const updatedPhotos = await getAllPhotos();
-            renderGrid(updatedPhotos, restoredOriginal.id);
+            // Re-renderizar grid apenas do projeto atual, mantendo foco na foto restaurada
+            const projectId = getActiveProjectId();
+            if (projectId) {
+              const projectPhotos = await getPhotosByProject(projectId);
+              renderGrid(projectPhotos, restoredOriginal.id);
+            } else {
+              const updatedPhotos = await getAllPhotos();
+              renderGrid(updatedPhotos, restoredOriginal.id);
+            }
             
             toast(`Foto original restaurada. ${siblings.length} cortes removidos.`);
             resolve(true);
@@ -574,6 +1379,7 @@ async function handleManualSplit(photo) {
     }
     
     // Preparar novas fotos (4 quadrantes)
+    const activeProjectId = getActiveProjectId();
     const newPhotos = quadrants.map((q, i) => ({
       id: crypto.randomUUID(),
       dataURL: q.dataURL,
@@ -582,6 +1388,7 @@ async function handleManualSplit(photo) {
       h: q.height,
       uploadedAt: Date.now() + i,
       rating: null,
+      projectId: activeProjectId || photo.projectId, // Sprint 5 - F5.1
       _parentId: photo.id,
       _quadrant: q.quadrant
     }));
@@ -592,8 +1399,14 @@ async function handleManualSplit(photo) {
     // Salvar tudo: original atualizada + 4 novas
     await savePhotos([updatedOriginal, ...newPhotos]);
     
-    // Re-renderizar grid mantendo foco na primeira foto cortada
-    renderGrid(await getAllPhotos(), newPhotos[0].id);
+    // Re-renderizar grid apenas do projeto atual, mantendo foco na primeira foto cortada
+    const projectId = getActiveProjectId();
+    if (projectId) {
+      const projectPhotos = await getPhotosByProject(projectId);
+      renderGrid(projectPhotos, newPhotos[0].id);
+    } else {
+      renderGrid(await getAllPhotos(), newPhotos[0].id);
+    }
     
     toast(`Foto dividida manualmente em 4 quadrantes.`);
     
@@ -630,6 +1443,7 @@ async function processCropQueue(candidates) {
       
       if (quadrants && quadrants.length === 4) {
         // Usuário confirmou: salvar 4 fotos
+        const activeProjectId = getActiveProjectId();
         const quadrantPhotos = quadrants.map(({ dataURL, width, height, quadrant }, idx) => ({
           id: crypto.randomUUID(),
           dataURL: dataURL,
@@ -638,6 +1452,7 @@ async function processCropQueue(candidates) {
           h: height,
           uploadedAt: Date.now() + idx,
           rating: null,
+          projectId: activeProjectId || photo.projectId, // Sprint 5 - F5.1
           _parentId: photo.id,
           _quadrant: quadrant
         }));
@@ -680,9 +1495,53 @@ function updateProgress(text, pct) {
 let selectionMode = false;
 let selectedIds = new Set();
 
-function renderGrid(photos, keepFocusOnPhotoId = null) {
+async function renderGrid(photos = null, keepFocusOnPhotoId = null) {
   // Salvar posição atual do scroll ANTES de qualquer modificação
   const savedScrollTop = window.pageYOffset || document.documentElement.scrollTop;
+  
+  // Se photos não fornecidas, carregar do projeto ativo
+  if (!photos) {
+    const projectId = getActiveProjectId();
+    if (projectId) {
+      // Será carregado assincronamente - retornar early
+      getPhotosByProject(projectId).then(projectPhotos => {
+        renderGrid(projectPhotos, keepFocusOnPhotoId);
+      });
+      return;
+    } else {
+      // Sem projeto ativo - carregar todas
+      getAllPhotos().then(all => {
+        renderGrid(all, keepFocusOnPhotoId);
+      });
+      return;
+    }
+  }
+  
+  // Carregar estado do contest para obter rankings (se houver)
+  const projectId = getActiveProjectId();
+  let contestRankings = {};
+  if (projectId) {
+    try {
+      await loadContestState();
+      if (contestState && contestState.phase === 'finished' && contestState.photoStats) {
+        // Mapear rankings para as fotos
+        Object.keys(contestState.photoStats).forEach(photoId => {
+          const stats = contestState.photoStats[photoId];
+          if (stats && typeof stats.rank === 'number' && stats.rank > 0) {
+            contestRankings[photoId] = stats.rank;
+          }
+        });
+      }
+    } catch (error) {
+      console.warn('Erro ao carregar estado do contest:', error);
+    }
+  }
+  
+  // Adicionar ranking às fotos
+  photos = photos.map(photo => ({
+    ...photo,
+    _contestRank: contestRankings[photo.id] || null
+  }));
   
   // Atualizar cache global
   allPhotos = photos;
@@ -714,10 +1573,32 @@ function renderGrid(photos, keepFocusOnPhotoId = null) {
   const clearBtn = $("#clearAll");
   if (clearBtn) clearBtn.disabled = filteredPhotos.length === 0;
 
+  // Estado vazio para grid de fotos
+  if (filteredPhotos.length === 0 && visiblePhotos.length === 0) {
+    const projectId = getActiveProjectId();
+    const uploadHash = projectId ? `#/project/${projectId}/upload` : '#/projects';
+    grid.innerHTML = `
+      <div class="empty-state" style="grid-column: 1 / -1; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 60vh;">
+        <div class="empty-state-icon">🖼️</div>
+        <h3>Nenhuma foto ainda</h3>
+        <p>Faça upload de fotos para começar a organizar e avaliar sua coleção!</p>
+        <button class="btn btn-primary" onclick="location.hash = '${uploadHash}'">
+          Fazer Upload
+        </button>
+      </div>
+    `;
+    return;
+  }
+
   visiblePhotos = filteredPhotos; // Usar lista filtrada
   
   visiblePhotos.forEach((p, idx) => {
     const badges = [];
+    // Badge de colocação no contest (se houver)
+    if (p._contestRank && p._contestRank > 0) {
+      const medal = p._contestRank === 1 ? '🥇' : p._contestRank === 2 ? '🥈' : p._contestRank === 3 ? '🥉' : '🏆';
+      badges.push(`<span class="badge badge-rank" title="Colocação no contest: ${p._contestRank}º lugar">${medal} ${p._contestRank}º</span>`);
+    }
     // Badge "Cortado" para fotos geradas por divisão 2×2
     if (p._parentId)
       badges.push('<span class="badge badge-split">Cortado</span>');
@@ -832,7 +1713,7 @@ function renderGrid(photos, keepFocusOnPhotoId = null) {
       removeBtn.innerHTML = '<span class="spinner" aria-hidden="true"></span>';
       try {
         await savePhotos([{ ...p, _delete: true }]);
-        renderGrid(await getAllPhotos());
+        renderGrid(); // Usa projeto ativo automaticamente
         toast("Imagem removida.");
       } catch {
         card.classList.remove("removing");
@@ -911,11 +1792,25 @@ function updateMultiBar() {
 async function removeSelected() {
   if (!selectedIds.size) return;
 
+  // Garantir que só remove fotos do projeto atual
+  const projectId = getActiveProjectId();
+  if (!projectId) {
+    toast("Nenhum projeto ativo. Abra um projeto primeiro.");
+    return;
+  }
+
   const ids = Array.from(selectedIds);
-  const all = await getAllPhotos();
-  const toDelete = all
+  const projectPhotos = await getPhotosByProject(projectId);
+  const toDelete = projectPhotos
     .filter((p) => ids.includes(p.id))
     .map((p) => ({ ...p, _delete: true }));
+
+  if (toDelete.length === 0) {
+    toast("Nenhuma foto selecionada do projeto atual.");
+    selectedIds.clear();
+    toggleSelectionMode(false);
+    return;
+  }
 
   await savePhotos(toDelete);
 
@@ -923,8 +1818,9 @@ async function removeSelected() {
   selectedIds.clear();
   toggleSelectionMode(false); // ⬅️ sai do modo e ajusta UI (labels/botões)
   
-  // Re-renderizar mantendo scroll (sem keepFocusOnPhotoId, usa savedScrollTop)
-  renderGrid(await getAllPhotos());
+  // Re-renderizar apenas fotos do projeto atual
+  const remainingPhotos = await getPhotosByProject(projectId);
+  renderGrid(remainingPhotos);
   
   toast(`${toDelete.length} imagem(ns) removida(s).`);
 }
@@ -973,16 +1869,45 @@ async function openViewerByPhotoId(photoId) {
   // Garantir que botões estejam visíveis ao abrir viewer na aba Upload
   showViewerButtons();
   
-  const allPhotos = await getAllPhotos();
-  // Aplicar mesma ordenação e filtro do grid
-  let visiblePhotos = allPhotos.filter(p => !p._isSplit);
+  // Carregar fotos do projeto atual
+  const projectId = getActiveProjectId();
+  let projectPhotos = projectId ? await getPhotosByProject(projectId) : await getAllPhotos();
+  
+  // Carregar estado do contest para obter rankings (se houver) - igual ao renderGrid
+  let contestRankings = {};
+  if (projectId) {
+    try {
+      await loadContestState();
+      if (contestState && contestState.phase === 'finished' && contestState.photoStats) {
+        // Mapear rankings para as fotos
+        Object.keys(contestState.photoStats).forEach(pid => {
+          const stats = contestState.photoStats[pid];
+          if (stats && typeof stats.rank === 'number' && stats.rank > 0) {
+            contestRankings[pid] = stats.rank;
+          }
+        });
+      }
+    } catch (error) {
+      console.warn('Erro ao carregar estado do contest:', error);
+    }
+  }
+  
+  // Adicionar ranking às fotos (igual ao renderGrid)
+  projectPhotos = projectPhotos.map(photo => ({
+    ...photo,
+    _contestRank: contestRankings[photo.id] || null
+  }));
+  
+  // Aplicar mesma ordenação e filtro do grid (exatamente como renderGrid faz)
+  let visiblePhotos = projectPhotos.filter(p => !p._isSplit);
   const sortFn = SORT_OPTIONS[currentSort]?.fn || SORT_OPTIONS['date-desc'].fn;
   visiblePhotos.sort(sortFn);
-  currentList = applyCurrentFilter(visiblePhotos);
+  const filteredPhotos = applyCurrentFilter(visiblePhotos);
+  currentList = filteredPhotos; // Usar lista filtrada
   
   if (!currentList.length) return;
   
-  // Encontrar índice da foto pelo ID
+  // Encontrar índice da foto pelo ID na lista ordenada e filtrada
   const index = currentList.findIndex(p => p.id === photoId);
   if (index < 0) return; // Foto não encontrada na lista filtrada
   
@@ -999,6 +1924,8 @@ async function openViewerByPhotoId(photoId) {
   updateViewerSplitButton();
   // Atualizar estrelas de rating
   updateViewerRating();
+  // Atualizar informações do contest (se houver)
+  await updateViewerContestInfo();
 }
 
 /**
@@ -1020,12 +1947,41 @@ async function openViewer(index) {
   // Garantir que botões estejam visíveis ao abrir viewer na aba Upload
   showViewerButtons();
   
-  const allPhotos = await getAllPhotos();
-  // Aplicar mesma ordenação e filtro do grid
-  let visiblePhotos = allPhotos.filter(p => !p._isSplit);
+  // Carregar fotos do projeto atual
+  const projectId = getActiveProjectId();
+  let projectPhotos = projectId ? await getPhotosByProject(projectId) : await getAllPhotos();
+  
+  // Carregar estado do contest para obter rankings (se houver) - igual ao renderGrid
+  let contestRankings = {};
+  if (projectId) {
+    try {
+      await loadContestState();
+      if (contestState && contestState.phase === 'finished' && contestState.photoStats) {
+        // Mapear rankings para as fotos
+        Object.keys(contestState.photoStats).forEach(pid => {
+          const stats = contestState.photoStats[pid];
+          if (stats && typeof stats.rank === 'number' && stats.rank > 0) {
+            contestRankings[pid] = stats.rank;
+          }
+        });
+      }
+    } catch (error) {
+      console.warn('Erro ao carregar estado do contest:', error);
+    }
+  }
+  
+  // Adicionar ranking às fotos (igual ao renderGrid)
+  projectPhotos = projectPhotos.map(photo => ({
+    ...photo,
+    _contestRank: contestRankings[photo.id] || null
+  }));
+  
+  // Aplicar mesma ordenação e filtro do grid (exatamente como renderGrid faz)
+  let visiblePhotos = projectPhotos.filter(p => !p._isSplit);
   const sortFn = SORT_OPTIONS[currentSort]?.fn || SORT_OPTIONS['date-desc'].fn;
   visiblePhotos.sort(sortFn);
-  currentList = applyCurrentFilter(visiblePhotos);
+  const filteredPhotos = applyCurrentFilter(visiblePhotos);
+  currentList = filteredPhotos; // Usar lista filtrada
   
   if (!currentList.length) return;
   currentIndex = Math.max(0, Math.min(index, currentList.length - 1));
@@ -1041,6 +1997,8 @@ async function openViewer(index) {
   updateViewerSplitButton();
   // Atualizar estrelas de rating
   updateViewerRating();
+  // Atualizar informações do contest (se houver)
+  await updateViewerContestInfo();
 }
 
 /**
@@ -1119,6 +2077,108 @@ function updateResultsViewerInfo() {
   `;
 }
 
+/**
+ * Atualiza informações do contest no viewer (modo Upload)
+ */
+async function updateViewerContestInfo() {
+  // Não atualizar se estiver no modo resultados
+  if (isResultsViewMode) return;
+  
+  if (currentIndex < 0 || !currentList.length) return;
+  
+  const photo = currentList[currentIndex];
+  if (!photo) return;
+  
+  // Carregar estado do contest
+  const projectId = getActiveProjectId();
+  if (!projectId) {
+    // Remover elemento se não houver projeto
+    const infoElement = document.getElementById("viewerContestInfo");
+    if (infoElement) infoElement.remove();
+    return;
+  }
+  
+  try {
+    await loadContestState();
+    
+    // Verificar se há contest finalizado e se a foto participou
+    if (!contestState || contestState.phase !== 'finished' || !contestState.photoStats) {
+      // Remover elemento se não houver contest finalizado
+      const infoElement = document.getElementById("viewerContestInfo");
+      if (infoElement) infoElement.remove();
+      return;
+    }
+    
+    const photoStats = contestState.photoStats[photo.id];
+    if (!photoStats || !photoStats.rank || photoStats.rank <= 0) {
+      // Foto não participou do contest - remover elemento
+      const infoElement = document.getElementById("viewerContestInfo");
+      if (infoElement) infoElement.remove();
+      return;
+    }
+    
+    // Foto participou do contest - mostrar informações
+    const displayRank = photoStats.rank;
+    const isChampion = photo.id === contestState.championId;
+    
+    // Calcular scoreData se não estiver disponível
+    let scoreData = contestState.scoresAndTiers?.[photo.id];
+    if (!scoreData) {
+      // Calcular scoreData usando funções já importadas
+      const eloRange = contestState.eloRange || calculateEloRange(contestState.eloScores);
+      const scoresAndTiers = calculateScoresAndTiers(
+        contestState.eloScores,
+        contestState.photoStats,
+        eloRange.min,
+        eloRange.max,
+        false
+      );
+      scoreData = scoresAndTiers[photo.id] || { score: 50, tier: { icon: '⭐', label: 'Médio' } };
+    }
+    
+    // Criar ou atualizar elemento de informações
+    let infoElement = document.getElementById("viewerContestInfo");
+    if (!infoElement) {
+      infoElement = document.createElement("div");
+      infoElement.id = "viewerContestInfo";
+      infoElement.className = "viewer-results-info";
+      const viewer = document.getElementById("viewer");
+      if (viewer) viewer.appendChild(infoElement);
+    }
+    
+    const badges = [];
+    if (photo._parentId) badges.push('<span class="badge badge-split">Cortado</span>');
+    if (typeof photo.rating === "number" && photo.rating > 0) {
+      badges.push(`<span class="badge badge-rated">★ ${photo.rating}</span>`);
+    }
+    if (!photo.rating) badges.push('<span class="badge badge-new">Novo</span>');
+    
+    // Badge de colocação
+    const medal = displayRank === 1 ? '🥇' : displayRank === 2 ? '🥈' : displayRank === 3 ? '🥉' : '🏆';
+    badges.push(`<span class="badge badge-rank" title="Colocação no contest: ${displayRank}º lugar">${medal} ${displayRank}º</span>`);
+    
+    infoElement.innerHTML = `
+      <div class="viewer-results-rank">#${displayRank}${isChampion ? ' 🏆' : ''}</div>
+      <div class="viewer-results-badges">${badges.join('')}</div>
+      <div class="viewer-results-stats">
+        <div class="tier-badge tier-badge-small">
+          <div class="tier-icon">${scoreData.tier.icon}</div>
+          <div class="tier-score">${scoreData.score}/100</div>
+          <div class="tier-label">${scoreData.tier.label}</div>
+        </div>
+        <div class="viewer-results-record">
+          ${photoStats.wins || 0}V - ${photoStats.losses || 0}D
+        </div>
+      </div>
+    `;
+  } catch (error) {
+    console.warn('Erro ao atualizar informações do contest no viewer:', error);
+    // Remover elemento em caso de erro
+    const infoElement = document.getElementById("viewerContestInfo");
+    if (infoElement) infoElement.remove();
+  }
+}
+
 function updateViewerSplitButton() {
   if (isResultsViewMode) return; // Não atualizar no modo resultados
   if (currentIndex < 0 || !currentList.length) return;
@@ -1167,6 +2227,10 @@ function closeViewer() {
     // Remover elemento de informações
     const infoElement = document.getElementById("viewerResultsInfo");
     if (infoElement) infoElement.remove();
+  } else {
+    // Remover elemento de informações do contest (modo Upload)
+    const infoElement = document.getElementById("viewerContestInfo");
+    if (infoElement) infoElement.remove();
   }
   
   // Sempre restaurar botões quando fechar viewer (independente do modo)
@@ -1214,7 +2278,13 @@ function viewerPrev() {
     }
   } else {
     if (currentIndex > 0) {
-      openViewer(currentIndex - 1);
+      currentIndex--;
+      const img = document.getElementById("viewerImg");
+      img.src = currentList[currentIndex].thumb;
+      resetZoom();
+      updateViewerSplitButton();
+      updateViewerRating();
+      updateViewerContestInfo();
     }
   }
 }
@@ -1231,7 +2301,13 @@ function viewerNext() {
     }
   } else {
     if (currentIndex < currentList.length - 1) {
-      openViewer(currentIndex + 1);
+      currentIndex++;
+      const img = document.getElementById("viewerImg");
+      img.src = currentList[currentIndex].thumb;
+      resetZoom();
+      updateViewerSplitButton();
+      updateViewerRating();
+      updateViewerContestInfo();
     }
   }
 }
@@ -1390,18 +2466,19 @@ async function deleteCurrentAndAdvance() {
     const victim = currentList[currentIndex];
     await savePhotos([{ ...victim, _delete: true }]);
 
-    // 2) recarrega lista global
-    const allPhotos = await getAllPhotos();
+    // 2) recarrega lista apenas do projeto atual
+    const projectId = getActiveProjectId();
+    const projectPhotos = projectId ? await getPhotosByProject(projectId) : await getAllPhotos();
     
     // Filtrar e aplicar ordenação/filtro
-    let visiblePhotos = allPhotos.filter(p => !p._isSplit);
+    let visiblePhotos = projectPhotos.filter(p => !p._isSplit);
     const sortFn = SORT_OPTIONS[currentSort]?.fn || SORT_OPTIONS['date-desc'].fn;
     visiblePhotos.sort(sortFn);
     const filteredPhotos = applyCurrentFilter(visiblePhotos);
 
     if (!filteredPhotos.length) {
-      // nada restou: fecha viewer e re-renderiza grid
-      renderGrid(allPhotos);
+      // nada restou: fecha viewer e re-renderiza grid apenas do projeto atual
+      renderGrid(projectPhotos);
       toast("Imagem removida.");
       closeViewer();
       return;
@@ -1435,10 +2512,17 @@ let lastFocusedEl = null;
 
 function openConfirm({ title, message, confirmText = "Confirmar", onConfirm }) {
   const m = $("#confirmModal");
+  const cancelBtn = $("#confirmCancel");
+  
+  // Garantir que botão cancelar está visível para confirmações
+  if (cancelBtn) {
+    cancelBtn.style.display = "";
+  }
+  
   $("#confirmTitle").textContent = title || "Confirmar ação";
   $("#confirmMsg").textContent = message || "Tem certeza?";
   $("#confirmOk").textContent = confirmText;
-
+  
   // listeners (limpa anteriores para evitar múltiplos binds)
   $("#confirmOk").onclick = async () => {
     try {
@@ -1512,7 +2596,81 @@ function closeConfirm() {
   m.setAttribute("aria-hidden", "true");
   m._cleanup?.();
   m._cleanup = null;
+  
+  // Garantir que botão cancelar está visível (caso tenha sido escondido por openAlert)
+  const cancelBtn = $("#confirmCancel");
+  if (cancelBtn) {
+    cancelBtn.style.display = "";
+  }
+  
   if (lastFocusedEl?.focus) setTimeout(() => lastFocusedEl.focus(), 0);
+}
+
+/**
+ * Abre modal de alerta (apenas informação, um botão OK)
+ */
+function openAlert({ title, message, okText = "OK" }) {
+  const m = $("#confirmModal");
+  $("#confirmTitle").textContent = title || "Aviso";
+  $("#confirmMsg").textContent = message || "";
+  $("#confirmOk").textContent = okText;
+  
+  // Esconder botão cancelar para alertas
+  const cancelBtn = $("#confirmCancel");
+  if (cancelBtn) {
+    cancelBtn.style.display = "none";
+  }
+  
+  // Listener apenas para OK
+  $("#confirmOk").onclick = () => {
+    closeConfirm();
+    if (cancelBtn) {
+      cancelBtn.style.display = ""; // Restaurar para próximos usos
+    }
+  };
+  
+  confirmOpen = true;
+  document.body.classList.add("confirm-open");
+  
+  function onKey(e) {
+    e.stopImmediatePropagation();
+    e.preventDefault();
+    
+    if (e.key === "Escape" || e.key === "Enter") {
+      closeConfirm();
+      if (cancelBtn) {
+        cancelBtn.style.display = ""; // Restaurar
+      }
+      return;
+    }
+  }
+  
+  document.addEventListener("keydown", onKey, { capture: true });
+  m.dataset.keyHandler = "true";
+  
+  m.addEventListener(
+    "click",
+    (e) => {
+      if (e.target === m) {
+        closeConfirm();
+        if (cancelBtn) {
+          cancelBtn.style.display = ""; // Restaurar
+        }
+      }
+    },
+    { once: true }
+  );
+  
+  lastFocusedEl = document.activeElement;
+  m.setAttribute("aria-hidden", "false");
+  $("#confirmOk").focus();
+  
+  m._cleanup = () => {
+    document.removeEventListener("keydown", onKey, { capture: true });
+    if (cancelBtn) {
+      cancelBtn.style.display = ""; // Restaurar
+    }
+  };
 }
 
 // ========================================
@@ -1750,11 +2908,19 @@ document.addEventListener('DOMContentLoaded', initViewerZoom);
  */
 async function setPhotoRating(photoId, rating, scrollToPhoto = false) {
   try {
-    const photos = await getAllPhotos();
-    const photo = photos.find(p => p.id === photoId);
+    // Garantir que só atualiza fotos do projeto atual
+    const projectId = getActiveProjectId();
+    if (!projectId) {
+      toast("Nenhum projeto ativo. Abra um projeto primeiro.");
+      return;
+    }
+    
+    const projectPhotos = await getPhotosByProject(projectId);
+    const photo = projectPhotos.find(p => p.id === photoId);
     
     if (!photo) {
-      console.error('Foto não encontrada:', photoId);
+      console.error('Foto não encontrada no projeto atual:', photoId);
+      toast("Foto não encontrada no projeto atual.");
       return;
     }
     
@@ -1765,8 +2931,8 @@ async function setPhotoRating(photoId, rating, scrollToPhoto = false) {
     // Salvar no IndexedDB
     await savePhotos([photo]);
     
-    // Atualizar cache global
-    allPhotos = await getAllPhotos();
+    // Atualizar cache global apenas do projeto atual
+    allPhotos = await getPhotosByProject(projectId);
     
     // Atualizar currentList também (para sincronizar viewer)
     if (currentList && currentList.length > 0) {
@@ -1777,7 +2943,7 @@ async function setPhotoRating(photoId, rating, scrollToPhoto = false) {
       }
     }
     
-    // Re-renderizar grid
+    // Re-renderizar grid apenas do projeto atual
     // Se scrollToPhoto=true: faz scroll até a foto (usado quando vem do viewer)
     // Se scrollToPhoto=false: mantém scroll atual (usado quando vem das miniaturas)
     renderGrid(allPhotos, scrollToPhoto ? photoId : null);
@@ -1795,6 +2961,7 @@ async function setPhotoRating(photoId, rating, scrollToPhoto = false) {
     // Atualizar viewer se estiver aberto (mas NÃO re-renderizar, apenas atualizar estrelas)
     if ($('#viewer')?.getAttribute('aria-hidden') === 'false') {
       updateViewerRating();
+      updateViewerContestInfo(); // Atualizar informações do contest também
     }
     
     // Atualizar aba "Avaliar" se estiver ativa (mas NÃO re-renderizar - será feito no callback)
@@ -1824,10 +2991,20 @@ function applyCurrentFilter(photos) {
 }
 
 /**
- * Atualiza contadores dos filtros
+ * Atualiza contadores dos filtros (apenas do projeto atual)
  */
-function updateFilterCounts() {
-  const photos = allPhotos.filter(p => !p._isSplit); // Apenas visíveis
+async function updateFilterCounts() {
+  const projectId = getActiveProjectId();
+  if (!projectId) {
+    // Sem projeto ativo - zerar contadores
+    $('#filterCountAll').textContent = '0';
+    $('#filterCountRated5').textContent = '0';
+    $('#filterCountUnrated').textContent = '0';
+    return;
+  }
+  
+  const projectPhotos = await getPhotosByProject(projectId);
+  const photos = projectPhotos.filter(p => !p._isSplit); // Apenas visíveis
   
   const counts = {
     all: photos.length,
@@ -1860,8 +3037,15 @@ function initFilters() {
         t.setAttribute('aria-selected', t.dataset.filter === filter ? 'true' : 'false');
       });
       
-      // Re-renderizar grid
-      renderGrid(allPhotos);
+      // Re-renderizar grid apenas do projeto atual
+      const projectId = getActiveProjectId();
+      if (projectId) {
+        getPhotosByProject(projectId).then(projectPhotos => {
+          renderGrid(projectPhotos);
+        });
+      } else {
+        renderGrid(allPhotos);
+      }
     });
   });
   
@@ -1874,19 +3058,65 @@ function initFilters() {
       // Salvar preferência no localStorage
       localStorage.setItem('photoranker-sort', currentSort);
       
-      // Re-renderizar grid
-      renderGrid(allPhotos);
+      // Re-renderizar grid apenas do projeto atual
+      const projectId = getActiveProjectId();
+      if (projectId) {
+        getPhotosByProject(projectId).then(projectPhotos => {
+          renderGrid(projectPhotos);
+        });
+      } else {
+        renderGrid(allPhotos);
+      }
     });
   }
 }
 
 /**
- * Atualiza select de ordenação com valor atual
+ * Atualiza select de ordenação com valor atual e opções disponíveis
  */
-function updateSortSelect() {
+async function updateSortSelect() {
   const sortSelect = $('#sortSelect');
-  if (sortSelect) {
-    sortSelect.value = currentSort;
+  if (!sortSelect) return;
+  
+  // Verificar se há contest finalizado para habilitar ordenação por colocação
+  const projectId = getActiveProjectId();
+  let hasFinishedContest = false;
+  
+  if (projectId) {
+    try {
+      await loadContestState();
+      hasFinishedContest = contestState && contestState.phase === 'finished';
+    } catch (error) {
+      console.warn('Erro ao verificar estado do contest:', error);
+    }
+  }
+  
+  // Salvar valor atual
+  const currentValue = sortSelect.value || currentSort;
+  
+  // Limpar opções
+  sortSelect.innerHTML = '';
+  
+  // Adicionar opções baseadas em SORT_OPTIONS
+  Object.entries(SORT_OPTIONS).forEach(([key, option]) => {
+    // Pular opções que requerem contest se não houver contest finalizado
+    if (option.requiresContest && !hasFinishedContest) {
+      return;
+    }
+    
+    const optionEl = document.createElement('option');
+    optionEl.value = key;
+    optionEl.textContent = option.label;
+    sortSelect.appendChild(optionEl);
+  });
+  
+  // Restaurar valor selecionado (ou usar padrão se não estiver disponível)
+  if (SORT_OPTIONS[currentValue] && (!SORT_OPTIONS[currentValue].requiresContest || hasFinishedContest)) {
+    sortSelect.value = currentValue;
+  } else {
+    // Se a opção atual não está disponível, usar padrão
+    sortSelect.value = 'date-desc';
+    currentSort = 'date-desc';
   }
 }
 
@@ -1899,17 +3129,7 @@ function updateSortSelect() {
  */
 function initRateView() {
   // Será renderizada dinamicamente quando aba for aberta
-  // Observar mudança de hash para detectar abertura
-  window.addEventListener('hashchange', () => {
-    if (location.hash === '#/rate') {
-      renderRateView();
-    }
-  });
-  
-  // Se já estiver na aba ao carregar
-  if (location.hash === '#/rate') {
-    setTimeout(() => renderRateView(), 100);
-  }
+  // O router já cuida da renderização baseado na rota
 }
 
 // ========================================
@@ -1952,24 +3172,7 @@ function initializeContestModules() {
  * Inicializa aba "Contest"
  */
 function initContestView() {
-  // Renderizar quando aba for aberta
-  window.addEventListener('hashchange', () => {
-    if (location.hash === '#/contest') {
-      renderContestView();
-    }
-  });
-  
-  if (location.hash === '#/contest') {
-    setTimeout(() => renderContestView(), 100);
-  }
-  
-  setTimeout(() => {
-    const contestSection = document.querySelector('[data-route="contest"]');
-    const contestView = $('#contestView');
-    if (contestSection && contestSection.classList.contains('active') && contestView && !contestView.innerHTML.trim()) {
-      renderContestView();
-    }
-  }, 500);
+  // O router já cuida da renderização baseado na rota
 }
 
 /**
@@ -1981,10 +3184,16 @@ async function renderContestView() {
     return;
   }
   
-  allPhotos = await getAllPhotos();
+  // Carregar fotos do projeto ativo
+  const projectId = getActiveProjectId();
+  if (projectId) {
+    allPhotos = await getPhotosByProject(projectId);
+  } else {
+    allPhotos = await getAllPhotos();
+  }
   const visiblePhotos = allPhotos.filter(p => !p._isSplit);
   
-  loadContestState();
+  await loadContestState();
   
   // Sistema pairwise: apenas fase 'qualifying' (fase 'final' é legado para migração)
   if (contestState && contestState.phase === 'qualifying') {
@@ -2042,7 +3251,7 @@ async function renderContestView() {
             try {
               // Limpar estado anterior antes de iniciar novo
               contestState = null;
-              saveContestState();
+              await saveContestState();
               await startContest();
             } catch (error) {
               console.error('Erro ao refazer contest:', error);
@@ -2157,6 +3366,16 @@ function generateNextPairwiseMatch(photos, eloScores, battleHistory) {
  * Inicia um novo contest (Sistema Pairwise)
  */
 async function startContest() {
+  // Garantir que só inicia contest com fotos do projeto atual
+  const projectId = getActiveProjectId();
+  if (!projectId) {
+    toast("Nenhum projeto ativo. Abra um projeto primeiro.");
+    return;
+  }
+  
+  // Carregar apenas fotos do projeto atual
+  const projectPhotos = await getPhotosByProject(projectId);
+  
   const context = {
     contestState: { current: contestState },
     renderBattle: async () => {
@@ -2168,14 +3387,14 @@ async function startContest() {
       return renderBattle();
     },
     toast,
-    allPhotos
+    allPhotos: projectPhotos // Passar apenas fotos do projeto atual
   };
   await startContestManager(context);
   // Atualizar referência global após startContest
   contestState = context.contestState.current;
   
   // Garantir que o estado foi salvo
-  saveContestState();
+  await saveContestState();
 }
 
 
@@ -2994,13 +4213,16 @@ async function handleQualifyingBattle(winner) {
 /**
  * Finaliza contest e vai para resultados
  */
-function finishContest() {
+async function finishContest() {
   const context = {
     contestState: { current: contestState },
     toast
   };
   finishContestManager(context);
   contestState = context.contestState.current;
+  
+  // Garantir que o estado foi salvo no IndexedDB do projeto atual
+  await saveContestState();
 }
 
 /**
@@ -3011,9 +4233,9 @@ function confirmCancelContest() {
     title: 'Cancelar Contest?',
     message: 'Todo o progresso será perdido. Deseja cancelar?',
     confirmText: 'Cancelar Contest',
-    onConfirm: () => {
+    onConfirm: async () => {
       contestState = null;
-      saveContestState();
+      await saveContestState();
       renderContestView();
       toast('Contest cancelado.');
     }
@@ -3023,49 +4245,130 @@ function confirmCancelContest() {
 /**
  * Salva estado do contest no localStorage
  */
-function saveContestState() {
-  const context = {
-    contestState: { current: contestState }
-  };
-  saveContestStateManager(context);
+async function saveContestState() {
+  const projectId = getActiveProjectId();
+  
+  if (projectId && contestState) {
+    // Salvar no IndexedDB (projeto ativo)
+    try {
+      const project = await getContest(projectId);
+      if (project) {
+        const stateToSave = {
+          phase: contestState.phase || 'idle',
+          eloScores: contestState.eloScores || {},
+          battleHistory: contestState.battleHistory || [],
+          qualifying: contestState.qualifying || null,
+          final: contestState.final || null,
+          championId: contestState.championId || null,
+          photoStats: contestState.photoStats || {}, // Salvar photoStats com ranks
+          eloRange: contestState.eloRange || { min: 1500, max: 1500 },
+          scoresAndTiers: contestState.scoresAndTiers || {}
+        };
+        
+        project.contestState = stateToSave;
+        project.updatedAt = Date.now();
+        await saveContest(project);
+      }
+    } catch (error) {
+      console.error('Erro ao salvar estado no IndexedDB:', error);
+      // Fallback para localStorage
+      const context = {
+        contestState: { current: contestState }
+      };
+      saveContestStateManager(context);
+    }
+  } else {
+    // Fallback para localStorage (compatibilidade)
+    const context = {
+      contestState: { current: contestState }
+    };
+    saveContestStateManager(context);
+  }
 }
 
 /**
- * Carrega estado do contest do localStorage
+ * Carrega estado do contest (IndexedDB ou localStorage)
  */
-function loadContestState() {
-  const context = {
-    contestState: { current: contestState },
-    allPhotos
-  };
-  loadContestStateManager(context);
-  contestState = context.contestState.current;
+async function loadContestState() {
+  const projectId = getActiveProjectId();
+  
+  if (projectId) {
+    // Carregar do IndexedDB (projeto ativo)
+    try {
+      const project = await getContest(projectId);
+      if (project && project.contestState && project.contestState.phase && project.contestState.phase !== 'idle') {
+        const savedState = project.contestState;
+        // Garantir que usa apenas fotos do projeto atual
+        const projectPhotos = await getPhotosByProject(projectId);
+        const visiblePhotos = projectPhotos.filter(p => !p._isSplit);
+        
+        // Reconstruir qualifiedPhotos se houver eloScores
+        let qualifiedPhotos = [];
+        if (savedState.eloScores && Object.keys(savedState.eloScores).length > 0) {
+          const qualifiedIds = Object.keys(savedState.eloScores);
+          qualifiedPhotos = qualifiedIds
+            .map(id => visiblePhotos.find(p => p.id === id))
+            .filter(Boolean);
+        }
+        
+        contestState = {
+          phase: savedState.phase,
+          qualifiedPhotos: qualifiedPhotos,
+          qualifying: savedState.qualifying || null,
+          final: savedState.final || null,
+          eloScores: savedState.eloScores || {},
+          battleHistory: savedState.battleHistory || [],
+          photoStats: savedState.photoStats || {}, // Carregar photoStats com ranks salvos
+          eloRange: savedState.eloRange || { min: 1500, max: 1500 },
+          scoresAndTiers: savedState.scoresAndTiers || {},
+          frozen: false,
+          championId: savedState.championId || null
+        };
+      } else {
+        contestState = null;
+      }
+    } catch (error) {
+      console.error('Erro ao carregar estado do IndexedDB:', error);
+      // Fallback para localStorage
+      const context = {
+        contestState: { current: contestState },
+        allPhotos
+      };
+      loadContestStateManager(context);
+      contestState = context.contestState.current;
+    }
+  } else {
+    // Fallback para localStorage (compatibilidade)
+    const context = {
+      contestState: { current: contestState },
+      allPhotos
+    };
+    loadContestStateManager(context);
+    contestState = context.contestState.current;
+  }
 }
 
 /**
  * Inicializa aba "Resultados"
  */
 function initResultsView() {
-  window.addEventListener('hashchange', () => {
-    if (location.hash === '#/results') {
-      renderResultsView();
-    }
-  });
-  
-  if (location.hash === '#/results') {
-    setTimeout(() => renderResultsView(), 100);
-  }
+  // O router já cuida da renderização baseado na rota
 }
 
 /**
  * Renderiza aba "Resultados"
  */
 async function renderResultsView() {
-  // Carregar fotos atualizadas PRIMEIRO
-  allPhotos = await getAllPhotos();
+  // Carregar fotos atualizadas do projeto ativo
+  const projectId = getActiveProjectId();
+  if (projectId) {
+    allPhotos = await getPhotosByProject(projectId);
+  } else {
+    allPhotos = await getAllPhotos();
+  }
   
   // Carregar estado do contest
-  loadContestState();
+  await loadContestState();
   
   if (resultsModule) {
     return resultsModule.renderResultsView();
@@ -3099,8 +4402,13 @@ async function renderRateView() {
   const container = $('#rateView');
   if (!container) return;
   
-  // Carregar fotos atualizadas
-  allPhotos = await getAllPhotos();
+  // Carregar fotos atualizadas do projeto ativo
+  const projectId = getActiveProjectId();
+  if (projectId) {
+    allPhotos = await getPhotosByProject(projectId);
+  } else {
+    allPhotos = await getAllPhotos();
+  }
   let allVisiblePhotos = allPhotos.filter(p => !p._isSplit); // Todas visíveis
   
   // Aplicar ordenação ativa
@@ -3122,7 +4430,7 @@ async function renderRateView() {
         <div class="rate-empty-icon">🎉</div>
         <h3>${rateViewOnlyUnrated ? 'Todas as fotos já foram avaliadas!' : 'Nenhuma foto para avaliar'}</h3>
         <p>${rateViewOnlyUnrated ? 'Você concluiu a avaliação de todas as fotos.' : 'Faça upload de fotos primeiro para começar a avaliar.'}</p>
-        <button class="btn" onclick="location.hash = '#/upload'">
+        <button class="btn" onclick="location.hash = '${projectId ? `#/project/${projectId}/upload` : '#/projects'}'">
           ${rateViewOnlyUnrated ? 'Ver todas as fotos' : 'Ir para Upload'}
         </button>
       </div>
@@ -3233,8 +4541,9 @@ async function renderRateView() {
  * Handler de atalhos de teclado na aba "Avaliar"
  */
 function handleRateViewKeys(e) {
-  // Apenas se estiver na aba "Avaliar"
-  if (location.hash !== '#/rate') return;
+  // Apenas se estiver na aba "Avaliar" (verificar rota do projeto)
+  const route = parseRoute(location.hash);
+  if (route.type !== 'project' || route.tab !== 'rate') return;
   
   const tag = (e.target && e.target.tagName) || "";
   const typing = ["INPUT", "TEXTAREA", "SELECT"].includes(tag);

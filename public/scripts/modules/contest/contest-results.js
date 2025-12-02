@@ -33,12 +33,18 @@ export function createResultsModule(context) {
     
     const contestState = getContestState();
     if (!contestState || contestState.phase !== 'finished') {
+      // Extrair projectId da URL atual
+      const hash = location.hash;
+      const projectMatch = hash.match(/#\/project\/([^/]+)/);
+      const projectId = projectMatch ? projectMatch[1] : null;
+      const contestHash = projectId ? `#/project/${projectId}/contest` : '#/contest';
+      
       container.innerHTML = `
         <div class="results-empty">
           <div class="results-empty-icon">📊</div>
           <h3>Nenhum contest finalizado ainda</h3>
           <p class="muted">Complete um contest para ver os resultados e o campeão!</p>
-          <button class="btn" onclick="location.hash='#/contest'">Ir para Contest</button>
+          <button class="btn" onclick="location.hash='${contestHash}'">Ir para Contest</button>
         </div>
       `;
       return;
@@ -88,17 +94,31 @@ export function createResultsModule(context) {
       if (photo.stats) {
         photo.stats.rank = index + 1;
       }
+      // Garantir que o rank também está no photoStats do contestState
+      if (contestState.photoStats[photo.id]) {
+        contestState.photoStats[photo.id].rank = index + 1;
+      }
     });
+    
+    // Salvar estado atualizado com ranks
+    setContestState(contestState);
+    saveContestState();
     
     let championId = contestState.championId || ranking[0]?.id;
     const champion = ranking.find(p => p.id === championId) || ranking[0];
     
     if (!champion) {
+      // Extrair projectId da URL atual
+      const hash = location.hash;
+      const projectMatch = hash.match(/#\/project\/([^/]+)/);
+      const projectId = projectMatch ? projectMatch[1] : null;
+      const contestHash = projectId ? `#/project/${projectId}/contest` : '#/contest';
+      
       container.innerHTML = `
         <div class="results-empty">
           <div class="results-empty-icon">❌</div>
           <h3>Erro ao carregar resultados</h3>
-          <button class="btn" onclick="location.hash='#/contest'">Voltar</button>
+          <button class="btn" onclick="location.hash='${contestHash}'">Voltar</button>
         </div>
       `;
       return;
@@ -454,7 +474,11 @@ export function createResultsModule(context) {
       onConfirm: () => {
         setContestState(null);
         saveContestState();
-        location.hash = '#/contest';
+        // Extrair projectId da URL atual
+        const hash = location.hash;
+        const projectMatch = hash.match(/#\/project\/([^/]+)/);
+        const projectId = projectMatch ? projectMatch[1] : null;
+        location.hash = projectId ? `#/project/${projectId}/contest` : '#/contest';
         toast('Contest resetado. Inicie um novo!');
       }
     });

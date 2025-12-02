@@ -38,7 +38,10 @@ export function createBattleModule(context) {
    */
   function handleBattleKeys(e) {
     const contestState = getContestState();
-    if (location.hash !== '#/contest' || !contestState) {
+    // Verificar se está na rota de contest do projeto (não mais #/contest simples)
+    const hash = location.hash;
+    const isContestRoute = hash.includes('/contest') || hash === '#/contest';
+    if (!isContestRoute || !contestState) {
       return;
     }
     
@@ -180,7 +183,7 @@ export function createBattleModule(context) {
         return;
       }
       qualifying.currentMatch = currentMatch;
-      saveContestState();
+      await saveContestState(); // Aguardar salvamento
     }
     
     const photoA = currentMatch.photoA;
@@ -550,7 +553,7 @@ export function createBattleModule(context) {
       if (!nextMatch) {
         // Todas as combinações foram esgotadas - finalizar contest
         setContestState(contestState);
-        saveContestState();
+        await saveContestState(); // Aguardar salvamento antes de finalizar
         await new Promise(resolve => setTimeout(resolve, 800));
         await finishContest();
         return;
@@ -558,7 +561,7 @@ export function createBattleModule(context) {
       
       qualifying.currentMatch = nextMatch;
       setContestState(contestState);
-      saveContestState();
+      await saveContestState(); // Aguardar salvamento
       
       await new Promise(resolve => setTimeout(resolve, 800));
       await renderBattle();
@@ -660,7 +663,7 @@ export function createBattleModule(context) {
     }
     
     setContestState(contestState);
-    saveContestState();
+    await saveContestState(); // Aguardar salvamento
     await new Promise(resolve => setTimeout(resolve, 800));
     await renderBattle();
   }
@@ -697,19 +700,23 @@ export function createBattleModule(context) {
     
     let finalPhotos = ranked.filter(p => p.scoreData.score > 50);
     
-    if (finalPhotos.length < 2) {
-      finalPhotos = ranked.slice(0, Math.max(2, ranked.length));
-      
       if (finalPhotos.length < 2) {
-        contestState.phase = 'finished';
-        setContestState(contestState);
-        saveContestState();
-        toast(`🏆 Contest finalizado! Apenas ${finalPhotos.length} foto(s) participaram.`);
-        await new Promise(resolve => setTimeout(resolve, 1500));
-        location.hash = '#/results';
-        return;
+        finalPhotos = ranked.slice(0, Math.max(2, ranked.length));
+        
+        if (finalPhotos.length < 2) {
+          contestState.phase = 'finished';
+          setContestState(contestState);
+          await saveContestState(); // Aguardar salvamento antes de redirecionar
+          toast(`🏆 Contest finalizado! Apenas ${finalPhotos.length} foto(s) participaram.`);
+          await new Promise(resolve => setTimeout(resolve, 1500));
+          // Redirecionar para aba Resultados do projeto atual
+          const hash = location.hash;
+          const projectMatch = hash.match(/#\/project\/([^/]+)/);
+          const projectId = projectMatch ? projectMatch[1] : null;
+          location.hash = projectId ? `#/project/${projectId}/results` : '#/results';
+          return;
+        }
       }
-    }
     
     const allBattles = contestState.battleHistory.filter(b => 
       b.phase === 'qualifying' || b.phase === 'final'
@@ -753,7 +760,7 @@ export function createBattleModule(context) {
     contestState.bracket = null;
     
     setContestState(contestState);
-    saveContestState();
+    await saveContestState(); // Aguardar salvamento
     
     toast(`🏆 Fase Classificatória finalizada! ${finalPhotos.length} fotos com score > 50 avançam para a Fase Final (todas contra todas).`);
     await new Promise(resolve => setTimeout(resolve, 1500));
@@ -803,13 +810,17 @@ export function createBattleModule(context) {
     contestState.phase = 'finished';
     contestState.championId = championId;
     setContestState(contestState);
-    saveContestState();
+    await saveContestState(); // Aguardar salvamento antes de redirecionar
     
     await new Promise(resolve => setTimeout(resolve, 1000));
     toast(`🏆 Contest finalizado! Campeã definida!`);
     
     setTimeout(() => {
-      location.hash = '#/results';
+      // Redirecionar para aba Resultados do projeto atual
+      const hash = location.hash;
+      const projectMatch = hash.match(/#\/project\/([^/]+)/);
+      const projectId = projectMatch ? projectMatch[1] : null;
+      location.hash = projectId ? `#/project/${projectId}/results` : '#/results';
     }, 1500);
   }
 
