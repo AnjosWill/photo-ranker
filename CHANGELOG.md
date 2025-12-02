@@ -1,7 +1,7 @@
 # Changelog
 Este projeto segue o formato **Keep a Changelog** e **SemVer**.
 
-## [v0.5.0] — 2025-01-15 (Sprint 5)
+## [v0.5.0] — 2025-12-02 (Sprint 5)
 ### ✨ Funcionalidades
 **Sistema de Múltiplos Projetos:**
 - **Infraestrutura Base (F5.1)**
