@@ -7,6 +7,7 @@
 import { getAllPhotos } from "../../db.js";
 import { initializeEloScores } from "../../elo.js";
 import { calculateEloRange, calculateScoresAndTiers } from "../../tiers.js";
+import { calculatePhotoStats, calculateRankingFromStats } from "./contest-state.js";
 
 
 /**
@@ -81,7 +82,25 @@ export function finishContest(context) {
   if (!contestState.current) return;
   
   // Calcular campeão baseado apenas no Elo final (não W-L)
-  const { qualifiedPhotos, eloScores } = contestState.current;
+  const { qualifiedPhotos, eloScores, battleHistory } = contestState.current;
+  
+  // Calcular photoStats e ranks antes de finalizar (se ainda não calculados)
+  if (!contestState.current.photoStats || Object.keys(contestState.current.photoStats).length === 0) {
+    const photoStats = calculatePhotoStats(
+      qualifiedPhotos,
+      eloScores,
+      battleHistory,
+      contestState.current,
+      {}
+    );
+    contestState.current.photoStats = photoStats;
+  }
+  
+  // Calcular ranks se ainda não calculados ou atualizar ranks existentes
+  if (contestState.current.photoStats) {
+    contestState.current.photoStats = calculateRankingFromStats(contestState.current.photoStats, false);
+  }
+  
   const ranked = [...qualifiedPhotos]
     .sort((a, b) => {
       const eloA = eloScores[a.id] || 1500;
@@ -97,14 +116,31 @@ export function finishContest(context) {
   }
   
   contestState.current.phase = 'finished';
+  
+  // Salvar estado antes de redirecionar
   saveContestState(context);
   
   toast('🏆 Contest finalizado! Veja os resultados.');
   
-  // Redirecionar para aba Resultados
+  // Redirecionar para aba Resultados do projeto atual
+  // Extrair projectId da URL atual ou usar função global se disponível
+  const hash = location.hash;
+  const projectMatch = hash.match(/#\/project\/([^/]+)/);
+  const projectId = projectMatch ? projectMatch[1] : null;
+  const resultsHash = projectId ? `#/project/${projectId}/results` : '#/results';
+  
+  // Aguardar um pouco mais para garantir que o estado foi salvo
   setTimeout(() => {
-    location.hash = '#/results';
-  }, 1000);
+    try {
+      location.hash = resultsHash;
+    } catch (error) {
+      console.error('Erro ao redirecionar para resultados:', error);
+      // Fallback: tentar novamente após um delay
+      setTimeout(() => {
+        location.hash = resultsHash;
+      }, 500);
+    }
+  }, 1500);
 }
 
 /**

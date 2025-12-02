@@ -106,7 +106,7 @@ npx http-server -p 5500
 - Layout responsivo sem scroll na aba "Avaliar"
 - Grid 1 coluna em telas < 400px (evita vazamento de estrelas)
 
-### ✅ Sprint 4 (v0.4.0) — **Atual**
+### ✅ Sprint 4 (v0.4.0)
 **Contest Mode - Sistema Elo-Based Non-Repeat Pairwise Ranking:**
 - Interface de confronto lado a lado (A vs B)
 - Sistema pairwise: cada par de fotos batalha apenas uma vez
@@ -140,6 +140,49 @@ npx http-server -p 5500
 - Delay 800ms entre confrontos para ver feedback
 - Miniaturas clicáveis no heatmap e histórico para abrir viewer
 
+### ✅ Sprint 5 (v0.5.0) — **Atual**
+**Sistema de Múltiplos Projetos:**
+- Infraestrutura base para múltiplos projetos (object store `contests` no IndexedDB)
+- Migração automática de dados antigos (cria projeto "default" e associa fotos existentes)
+- Campo `projectId` em todas as fotos para isolamento entre projetos
+- Tela inicial de gerenciamento de projetos com grid de cards
+- Side menu para navegação rápida entre projetos
+- Breadcrumb para indicar projeto ativo e contexto atual
+- Cada projeto tem seu próprio estado de contest, fotos e avaliações
+
+**Gerenciamento de Projetos:**
+- CRUD completo: criar, editar, duplicar, deletar projetos
+- Sistema de pastas para organização hierárquica
+- Reordenação de projetos e pastas (drag & drop)
+- Mover projetos entre pastas ou para "Sem pasta"
+- Estatísticas por projeto: total de fotos, avaliadas, ⭐5, fase atual
+- Cards com preview de miniaturas das primeiras fotos
+- Modal de edição com nome e descrição
+- Duplicação de projetos (com fotos, mas estado resetado)
+
+**Exportação e Importação:**
+- Exportar projeto completo para arquivo ZIP
+- Formato: `project.json` (dados completos) + pasta `photos/` (imagens)
+- Preserva: dados do projeto, estado completo do contest, todas as fotos, avaliações, thumbnails
+- Importar projeto de arquivo ZIP
+- Validação completa de estrutura e dados
+- Seleção de pasta ao importar (se houver pastas no sistema)
+- Feedback de progresso durante export/import (barra de progresso)
+- Nome de arquivo: `[nome-projeto]-[data].zip`
+
+**Persistência:**
+- Projeto ativo salvo no localStorage (`activeProjectId`)
+- Migração automática e idempotente (pode rodar múltiplas vezes)
+- Backward compatible (fotos antigas funcionam sem projeto)
+- Índices otimizados no IndexedDB para queries por projeto
+
+**UX/A11Y:**
+- Interface responsiva (grid adaptativo, side menu colapsável)
+- Transições suaves ao trocar de projeto
+- Feedback visual em todas as operações (toasts, animações)
+- Navegação por teclado completa
+- Estados vazios informativos
+
 ## 🎯 Atalhos de Teclado
 
 | Tecla | Ação |
@@ -171,10 +214,14 @@ photo-ranker/
 │   │   ├── cropper.js             # Modal de corte 2×2
 │   │   ├── quad-worker.js         # Worker de detecção
 │   │   ├── rating.js              # Componente de estrelas
-│   │   └── elo.js                 # Sistema de ranking Elo
+│   │   ├── elo.js                 # Sistema de ranking Elo
+│   │   └── modules/
+│   │       ├── contest/           # Módulos do Contest Mode
+│   │       ├── project/           # Gerenciamento de projetos
+│   │       └── export/            # Exportação/importação
 │   └── styles/
 │       ├── base.css               # Layout e tokens
-│       └── components.css         # Componentes e microinterações
+│       └── components.css          # Componentes e microinterações
 ├── package.json
 ├── PROJECT_PLAN.md                # Documentação técnica
 ├── CHANGELOG.md                   # Histórico de versões
@@ -201,10 +248,8 @@ photo-ranker/
 - ✅ **Sprint 2** (v0.2.0): Detecção 2×2, cropper, zoom/pan
 - ✅ **Sprint 3** (v0.3.0): Rating, filtros, ordenação, aba "Avaliar"
 - ✅ **Sprint 4** (v0.4.0): Contest Mode (sistema pairwise + Elo + resultados)
-- 🔜 **Sprint 5**: Múltiplos projetos + exportação/importação + PWA
-
-## 📝 Próximos passos
-- Sprint 5: Múltiplos projetos + exportação/importação + PWA + refinamentos.
+- ✅ **Sprint 5** (v0.5.0): Múltiplos projetos + pastas + exportação/importação
+- 🔜 **Sprint 6**: PWA + otimizações de performance + theme switcher
 
 ## 📄 Licença
 

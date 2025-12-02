@@ -1,6 +1,105 @@
 # Changelog
 Este projeto segue o formato **Keep a Changelog** e **SemVer**.
 
+## [v0.5.0] — 2025-01-15 (Sprint 5)
+### ✨ Funcionalidades
+**Sistema de Múltiplos Projetos:**
+- **Infraestrutura Base (F5.1)**
+  - Object store `contests` no IndexedDB para armazenar múltiplos projetos
+  - Campo `projectId` em todas as fotos para isolamento entre projetos
+  - Migração automática de dados antigos (cria projeto "default" e associa fotos existentes)
+  - Migração idempotente (pode rodar múltiplas vezes sem problemas)
+  - Backward compatible (fotos antigas funcionam sem projeto)
+  - Índices otimizados no IndexedDB para queries por projeto (`by-project`, `by-phase`)
+  - Funções CRUD para contests: `createContest`, `getAllContests`, `getContest`, `updateContest`, `deleteContest`
+  - Função `getPhotosByProject(projectId)` para filtrar fotos por projeto
+
+- **Gerenciamento de Projetos (F5.2)**
+  - Tela inicial de gerenciamento com grid de cards de projetos
+  - Side menu lateral para navegação rápida entre projetos
+  - Breadcrumb no header para indicar projeto ativo e contexto atual
+  - CRUD completo: criar, editar, duplicar, deletar projetos
+  - Sistema de pastas para organização hierárquica de projetos
+  - Reordenação de projetos e pastas (drag & drop)
+  - Mover projetos entre pastas ou para "Sem pasta"
+  - Estatísticas por projeto: total de fotos, avaliadas, ⭐5, fase atual
+  - Cards com preview de miniaturas das primeiras fotos do projeto
+  - Modal de edição com nome e descrição
+  - Duplicação de projetos (com fotos, mas estado de contest resetado)
+  - Cada projeto tem seu próprio estado de contest, fotos e avaliações
+  - Projeto ativo salvo no localStorage (`activeProjectId`)
+  - Filtro automático: grid, aba "Avaliar" e Contest mostram apenas fotos do projeto ativo
+  - Upload adiciona fotos automaticamente ao projeto ativo
+
+- **Exportação e Importação (F5.3)**
+  - Exportar projeto completo para arquivo ZIP
+  - Formato de exportação: `project.json` (dados completos) + pasta `photos/` (imagens)
+  - Preserva todos os dados: projeto, estado completo do contest (phase, eloScores, battleHistory, qualifying, final, championId, photoStats, eloRange, scoresAndTiers), todas as fotos com metadados, avaliações (ratings), thumbnails
+  - Importar projeto de arquivo ZIP
+  - Validação completa de estrutura e dados (formato ZIP, JSON válido, campos obrigatórios)
+  - Seleção de pasta ao importar (se houver pastas no sistema)
+  - Modal de seleção de pasta com lista de pastas existentes + opção "Sem pasta"
+  - Feedback de progresso durante export/import (barra de progresso 0-100%)
+  - Nome de arquivo exportado: `[nome-projeto]-[data].zip`
+  - Geração de novos IDs únicos ao importar (não preserva IDs originais)
+  - Preservação de ordem e metadados das fotos
+  - Tratamento de erros em todas as etapas com mensagens claras
+
+### 🎨 UX e Interface
+- **Tela de Projetos**
+  - Grid responsivo de cards com preview de miniaturas
+  - Side menu colapsável com lista de projetos organizados por pastas
+  - Breadcrumb dinâmico mostrando: Projetos > [Pasta] > [Projeto] > [Aba]
+  - Estados vazios informativos ("Nenhum projeto criado ainda")
+  - Transições suaves ao trocar de projeto
+  - Feedback visual em todas as operações (toasts, animações)
+- **Cards de Projeto**
+  - Preview com 3-4 miniaturas das primeiras fotos
+  - Estatísticas: total de fotos, avaliadas, ⭐5, fase atual
+  - Badges de fase: "Em avaliação", "Em contest", "Finalizado"
+  - Botões de ação: Editar, Duplicar, Exportar, Deletar
+  - Destaque visual no projeto ativo (borda/background diferente)
+- **Modais**
+  - Modal de criação/edição de projeto (nome e descrição)
+  - Modal de seleção de pasta para importação
+  - Modais acessíveis com ARIA labels e trap de foco
+
+### ♿ Acessibilidade
+- Navegação por teclado completa em todos os componentes
+- ARIA labels em todos os elementos interativos
+- Side menu acessível com foco e navegação por Tab
+- Breadcrumb com navegação semântica
+- Estados vazios com mensagens descritivas
+
+### 🧱 Arquitetura
+- **Novos Módulos:**
+  - `modules/project/project-manager.js`: CRUD de projetos e pastas
+  - `modules/project/project-ui.js`: Componentes UI de gerenciamento
+  - `modules/export/export-manager.js`: Lógica de exportação para ZIP
+  - `modules/export/import-manager.js`: Lógica de importação de ZIP
+  - `modules/export/import-folder-selector.js`: Modal de seleção de pasta
+- **Modificações no IndexedDB:**
+  - Novo object store `contests` com índices otimizados
+  - Novo object store `folders` para organização hierárquica
+  - Campo `projectId` adicionado em todas as fotos
+  - Campo `folderId` em projetos para organização
+- **Dependências:**
+  - JSZip para criação e leitura de arquivos ZIP (via CDN)
+
+### 🐛 Correções
+- Migração automática garante que fotos antigas funcionem sem projeto
+- Validação de dados na importação previne corrupção
+- Tratamento de erros robusto em todas as operações de export/import
+- Sincronização correta de projeto ativo entre componentes
+
+### 📄 Documentação
+- Documentos de planejamento: F5.1, F5.2, F5.3_PLAN.md
+- Casos de teste: F5.1, F5.2, F5.3_TESTS.md
+- README.md atualizado com features da Sprint 5
+- Estrutura de arquivos atualizada no README
+
+---
+
 ## [v0.4.0] — 2025-10-31 (Sprint 4)
 ### ✨ Funcionalidades
 **Contest Mode - Sistema Elo-Based Non-Repeat Pairwise Ranking:**
